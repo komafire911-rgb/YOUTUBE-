@@ -1,0 +1,20 @@
+# --- 台本生成（LLM） ---
+anthropic>=0.40.0
+
+# --- 音声合成（TTS） ---
+gTTS>=2.5.1
+elevenlabs>=1.9.0
+
+# --- 動画・画像合成 ---
+moviepy>=1.0.3
+Pillow>=10.4.0
+numpy>=1.26.0
+
+# --- YouTube アップロード ---
+google-api-python-client>=2.140.0
+google-auth>=2.34.0
+google-auth-oauthlib>=1.2.1
+
+# --- 共通 ---
+PyYAML>=6.0.2
+python-dotenv>=1.0.1

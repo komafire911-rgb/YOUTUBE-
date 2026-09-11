@@ -1,0 +1,22 @@
+## Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+## 環境変数・認証情報（絶対にコミットしない）
+.env
+config/secrets.yaml
+*.token.json
+client_secret*.json
+youtube_oauth_token.json
+
+## 生成物（動画・音声・字幕などの出力物はリポジトリに含めない）
+output/*
+!output/.gitkeep
+
+## OS / エディタ
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,40 @@
+# YouTube 自動生成パイプラインの共通設定
+# 動画のジャンルや尺が決まったら、このファイルを編集してパイプラインの挙動を調整してください。
+
+script:
+  # 台本生成に使う Claude モデル
+  model: "claude-sonnet-5"
+  # 生成する動画1本あたりの目安の長さ（秒）。台本の長さの目安として使う。
+  target_duration_seconds: 60
+  # 台本生成時のシステム指示（トーン・構成のスタイル）
+  system_prompt: |
+    あなたはYouTube動画のナレーション台本を書く専門のライターです。
+    与えられたテーマについて、聞き手を飽きさせない自然な話し言葉の台本を書いてください。
+    - 導入（フック）→本編→まとめ、の構成にすること
+    - 1文は短く、TTS（音声合成）で読み上げやすい表現にすること
+    - 台本本文以外の説明・見出し・記号は出力しないこと
+
+tts:
+  provider: "gtts"       # gtts | elevenlabs （.env の TTS_PROVIDER で上書き可）
+  language: "ja"
+  elevenlabs:
+    model: "eleven_multilingual_v2"
+
+video:
+  width: 1920
+  height: 1080
+  fps: 30
+  # 背景色（スライド背景を自動生成する場合に使用、RGB）
+  background_color: [17, 17, 22]
+  font_path: "assets/fonts/NotoSansJP-Bold.ttf"
+  font_size: 64
+  subtitle_font_size: 48
+  bgm_path: null          # 例: "assets/bgm/bgm.mp3"（未設定ならBGMなし）
+  bgm_volume: 0.15
+
+youtube:
+  category_id: "22"       # People & Blogs（YouTube のカテゴリID）
+  default_tags: ["自動生成", "AI"]
+  privacy_status: "private"  # env の YOUTUBE_PRIVACY_STATUS で上書き可
+
+output_dir: "output"
