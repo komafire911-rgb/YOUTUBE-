@@ -1,18 +1,35 @@
 # YouTube 自動生成パイプラインの共通設定
-# 動画のジャンルや尺が決まったら、このファイルを編集してパイプラインの挙動を調整してください。
+#
+# 「楽々脳活」（脳科学研究家 かみき♪ さんのチャンネル）の
+# 脳科学ショート動画フォーマットに合わせた設定です。
+# Googleドライブの台本原稿（脳科学ショート動画：1ヶ月ネタカレンダー 等）を
+# 参考に、以下の構成をテンプレート化しています。
+#   【タイトル】→【衝撃的な結論】→【理由】→【具体例】→【解説文】→【ハッシュタグ】
 
 script:
-  # 台本生成に使う Claude モデル
   model: "claude-sonnet-5"
-  # 生成する動画1本あたりの目安の長さ（秒）。台本の長さの目安として使う。
-  target_duration_seconds: 60
-  # 台本生成時のシステム指示（トーン・構成のスタイル）
+  # Shorts想定のため60秒未満に収まる分量にする
+  target_duration_seconds: 45
   system_prompt: |
-    あなたはYouTube動画のナレーション台本を書く専門のライターです。
-    与えられたテーマについて、聞き手を飽きさせない自然な話し言葉の台本を書いてください。
-    - 導入（フック）→本編→まとめ、の構成にすること
-    - 1文は短く、TTS（音声合成）で読み上げやすい表現にすること
-    - 台本本文以外の説明・見出し・記号は出力しないこと
+    あなたは「楽々脳活」という脳科学系YouTubeチャンネルの台本作家です。
+    脳科学研究家「かみき♪」の監修のもと、視聴者（脳トレ・脳活・自己啓発に関心のある
+    一般層、特に40代以上）に向けた60秒未満のYouTube Shorts用台本を書きます。
+
+    以下の【楽々脳活・脳科学ショート】フォーマットを厳守し、必ず次の4行から
+    始まる形式で出力してください（余計な前置きや説明は一切不要）。
+
+    TITLE: (30文字前後。「えっ！？」「〜だった！？」のような驚きを誘うタイトル)
+    NARRATION: (以下の流れを1つの自然な話し言葉の文章にまとめたナレーション本文。
+      TTSで読み上げる前提で、句読点を適切に打ち、1文を短くすること。
+      構成: 衝撃的な結論の提示 → その理由（脳科学的な仕組み） → 身近な具体例 →
+      まとめの一言。150〜220文字程度。)
+    DESCRIPTION: (YouTube概要欄用に2〜3文で内容を要約したもの)
+    HASHTAGS: (「#脳科学」「#雑学」を含む、関連ハッシュタグを5〜10個スペース区切りで)
+
+    ナレーションのトーン:
+    - 「〜なんです」「〜なんですよ」など、親しみやすく語りかける口調
+    - 難しい専門用語には簡単な言い換えを添える
+    - 煽りすぎず、科学的な事実として誠実に伝える
 
 tts:
   provider: "gtts"       # gtts | elevenlabs （.env の TTS_PROVIDER で上書き可）
@@ -21,20 +38,21 @@ tts:
     model: "eleven_multilingual_v2"
 
 video:
-  width: 1920
-  height: 1080
+  # YouTube Shorts 想定の縦型（9:16）
+  width: 1080
+  height: 1920
   fps: 30
   # 背景色（スライド背景を自動生成する場合に使用、RGB）
-  background_color: [17, 17, 22]
+  background_color: [15, 20, 40]
   font_path: "assets/fonts/NotoSansJP-Bold.ttf"
-  font_size: 64
-  subtitle_font_size: 48
+  font_size: 72
+  subtitle_font_size: 56
   bgm_path: null          # 例: "assets/bgm/bgm.mp3"（未設定ならBGMなし）
-  bgm_volume: 0.15
+  bgm_volume: 0.12
 
 youtube:
-  category_id: "22"       # People & Blogs（YouTube のカテゴリID）
-  default_tags: ["自動生成", "AI"]
-  privacy_status: "private"  # env の YOUTUBE_PRIVACY_STATUS で上書き可
+  category_id: "27"       # Education（教育）
+  default_tags: ["脳科学", "脳トレ", "雑学", "楽々脳活", "AI自動生成"]
+  privacy_status: "private"  # env の YOUTUBE_PRIVACY_STATUS で上書き可。公開に切り替える際は README.md の注意事項を必ず確認すること
 
 output_dir: "output"

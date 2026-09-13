@@ -60,7 +60,7 @@ def run_once() -> int:
         upload_video(
             video_path=video_path,
             title=script.title,
-            description=script.body,
+            description=script.youtube_description,
             settings=settings,
         )
 
