@@ -36,7 +36,9 @@ scripts/
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-sudo apt-get install -y ffmpeg   # MoviePy が動画書き出しに使用
+# ffmpeg はrequirements.txtの imageio-ffmpeg が自動でバイナリを用意するため、
+# 通常は追加インストール不要。うまく検出されない場合のみ以下を実行:
+# sudo apt-get install -y ffmpeg
 
 cp .env.example .env
 # .env を編集（最初は DRY_RUN=true のままでOK。APIキー無しでも動作確認可能）
@@ -49,10 +51,10 @@ python main.py
 - `DRY_RUN=true` の間は YouTube への実アップロードは行われず、ログ出力のみです。
 - 生成された動画は `output/` に保存されます（gitには含まれません）。
 
-日本語を綺麗に表示するには、[Noto Sans JP](https://fonts.google.com/noto/specimen/Noto+Sans+JP)
-などの日本語フォント（.ttf）を `assets/fonts/` に配置し、
-`config/config.yaml` の `video.font_path` をそのパスに合わせてください。
-未配置の場合はPILのデフォルトフォントで代用されます（日本語は文字化けします）。
+日本語フォントは [Noto Sans JP](https://fonts.google.com/noto/specimen/Noto+Sans+JP)
+Bold を `assets/fonts/NotoSansJP-Bold.ttf` に同梱済みです（SIL Open Font License）。
+別のフォントに差し替えたい場合は、そのファイルを `assets/fonts/` に置いて
+`config/config.yaml` の `video.font_path` を合わせてください。
 
 ### 2. テーマを追加する
 

@@ -26,19 +26,11 @@ def _load_font(font_path: str, size: int) -> ImageFont.FreeTypeFont:
         return ImageFont.load_default()
 
 
-def _make_background_image(
-    title: str, size: tuple[int, int], bg_color: tuple[int, int, int], font_path: str, font_size: int
-) -> Image.Image:
-    img = Image.new("RGB", size, color=bg_color)
-    draw = ImageDraw.Draw(img)
-    font = _load_font(font_path, font_size)
-
-    # タイトルを中央に折り返し描画
-    max_width = int(size[0] * 0.8)
-    words = list(title)
+def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
+    """1文字ずつ足していき、指定した幅を超えたら改行するシンプルな日本語向け折り返し。"""
     lines: list[str] = []
     current = ""
-    for ch in words:
+    for ch in text:
         trial = current + ch
         bbox = draw.textbbox((0, 0), trial, font=font)
         if bbox[2] - bbox[0] > max_width and current:
@@ -48,6 +40,19 @@ def _make_background_image(
             current = trial
     if current:
         lines.append(current)
+    return lines
+
+
+def _make_background_image(
+    title: str, size: tuple[int, int], bg_color: tuple[int, int, int], font_path: str, font_size: int
+) -> Image.Image:
+    img = Image.new("RGB", size, color=bg_color)
+    draw = ImageDraw.Draw(img)
+    font = _load_font(font_path, font_size)
+
+    # タイトルを中央に折り返し描画
+    max_width = int(size[0] * 0.8)
+    lines = _wrap_text(draw, title, font, max_width)
 
     line_height = font_size + 20
     total_height = line_height * len(lines)
@@ -68,16 +73,31 @@ def _make_caption_image(
     draw = ImageDraw.Draw(img)
     font = _load_font(font_path, font_size)
 
-    bbox = draw.textbbox((0, 0), text, font=font)
-    text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    # 字幕チャンクが1行に収まらない場合に備えて折り返す
+    max_width = int(size[0] * 0.86)
+    lines = _wrap_text(draw, text, font, max_width)
+
+    line_height = font_size + 12
+    line_boxes = [draw.textbbox((0, 0), line, font=font) for line in lines]
+    line_widths = [b[2] - b[0] for b in line_boxes]
+    max_line_w = max(line_widths) if line_widths else 0
+    total_text_h = line_height * len(lines)
+
     pad_x, pad_y = 30, 16
-    box_x0 = (size[0] - text_w) // 2 - pad_x
-    box_y0 = size[1] - int(size[1] * 0.18) - text_h - pad_y
-    box_x1 = (size[0] + text_w) // 2 + pad_x
-    box_y1 = box_y0 + text_h + pad_y * 2
+    box_x0 = (size[0] - max_line_w) // 2 - pad_x
+    box_y0 = size[1] - int(size[1] * 0.18) - total_text_h - pad_y
+    box_x1 = (size[0] + max_line_w) // 2 + pad_x
+    box_y1 = box_y0 + total_text_h + pad_y * 2
 
     draw.rounded_rectangle([box_x0, box_y0, box_x1, box_y1], radius=12, fill=(0, 0, 0, 160))
-    draw.text(((size[0] - text_w) // 2, box_y0 + pad_y - bbox[1]), text, font=font, fill=(255, 255, 255, 255))
+
+    y = box_y0 + pad_y
+    for line, bbox in zip(lines, line_boxes):
+        w = bbox[2] - bbox[0]
+        x = (size[0] - w) // 2
+        draw.text((x, y - bbox[1]), line, font=font, fill=(255, 255, 255, 255))
+        y += line_height
+
     return img
 
 

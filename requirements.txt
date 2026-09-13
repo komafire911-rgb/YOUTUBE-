@@ -6,7 +6,10 @@ gTTS>=2.5.1
 elevenlabs>=1.9.0
 
 # --- 動画・画像合成 ---
-moviepy>=1.0.3
+# moviepy 2.x は API が大きく変わっており（moviepy.editor の廃止など）、
+# 本パイプラインは 1.x 系のAPIで書かれているため上限を固定している。
+moviepy>=1.0.3,<2
+imageio-ffmpeg>=0.5.1   # ffmpeg実行バイナリを同梱。システムにffmpegが無くても動作する保険
 Pillow>=10.4.0
 numpy>=1.26.0
 
