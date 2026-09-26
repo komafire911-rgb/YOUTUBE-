@@ -37,6 +37,12 @@ tts:
   elevenlabs:
     model: "eleven_multilingual_v2"
 
+image:
+  # 背景イラストの自動生成（Google Gemini / Imagen）。
+  # GEMINI_API_KEY が未設定の場合は自動的に単色背景にフォールバックする。
+  enabled: true
+  model: "imagen-4.0-generate-001"
+
 video:
   # YouTube Shorts 想定の縦型（9:16）
   width: 1080

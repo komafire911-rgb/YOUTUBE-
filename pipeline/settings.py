@@ -41,6 +41,9 @@ class Settings:
     # 台本生成
     anthropic_api_key: str | None = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY"))
 
+    # 背景画像生成（Google Gemini / Imagen）
+    gemini_api_key: str | None = field(default_factory=lambda: os.getenv("GEMINI_API_KEY"))
+
     # TTS
     tts_provider: str = field(default_factory=lambda: os.getenv("TTS_PROVIDER", "gtts"))
     elevenlabs_api_key: str | None = field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY"))
@@ -71,6 +74,10 @@ class Settings:
     @property
     def video_cfg(self) -> dict[str, Any]:
         return self.raw["video"]
+
+    @property
+    def image_cfg(self) -> dict[str, Any]:
+        return self.raw.get("image", {})
 
     @property
     def youtube_cfg(self) -> dict[str, Any]:

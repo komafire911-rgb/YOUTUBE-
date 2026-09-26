@@ -18,6 +18,7 @@ config/
   topics.yaml     … 動画化するテーマのキュー（1件処理するたびに status を更新）
 pipeline/
   script_generation.py … Claude API でテーマから台本を生成
+  image_generation.py   … Gemini(Imagen) でテーマに合った背景イラストを生成
   tts.py / providers/  … 台本を音声化（gTTS or ElevenLabs）
   subtitles.py          … 字幕チャンク分割
   video_assembly.py     … 音声 + 背景 + 字幕から mp4 を合成（MoviePy）
@@ -74,8 +75,16 @@ topics:
 | 用途 | 環境変数 | 必須/任意 |
 |---|---|---|
 | 台本生成（Claude） | `ANTHROPIC_API_KEY` | 任意（無いと簡易テンプレート） |
+| 背景イラスト生成（Gemini/Imagen） | `GEMINI_API_KEY` | 任意（無いと単色背景） |
 | TTS（ElevenLabs使用時） | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` | 任意（gTTSなら不要） |
 | YouTubeアップロード | `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` | アップロードする場合は必須 |
+
+#### 背景イラスト生成のセットアップ（任意）
+
+1. [Google AI Studio](https://aistudio.google.com/apikey) で APIキーを発行する。
+2. `.env`（またはGitHub Secrets）に `GEMINI_API_KEY` として設定する。
+3. `config/config.yaml` の `image.enabled: false` にすると生成自体を無効化できる
+   （キーが未設定の場合も自動的に単色背景にフォールバックするので、設定必須ではない）。
 
 #### YouTube アップロードのセットアップ
 

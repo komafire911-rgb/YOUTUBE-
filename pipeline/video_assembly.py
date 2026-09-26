@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
+from .image_generation import generate_background_image
 from .settings import Settings
 from .subtitles import build_captions
 
@@ -44,10 +45,18 @@ def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFon
 
 
 def _make_background_image(
-    title: str, size: tuple[int, int], bg_color: tuple[int, int, int], font_path: str, font_size: int
+    title: str,
+    size: tuple[int, int],
+    bg_color: tuple[int, int, int],
+    font_path: str,
+    font_size: int,
+    photo_path: Path | None = None,
 ) -> Image.Image:
-    img = Image.new("RGB", size, color=bg_color)
-    draw = ImageDraw.Draw(img)
+    if photo_path is not None:
+        img = ImageOps.fit(Image.open(photo_path).convert("RGB"), size, method=Image.LANCZOS)
+    else:
+        img = Image.new("RGB", size, color=bg_color)
+    draw = ImageDraw.Draw(img, "RGBA")
     font = _load_font(font_path, font_size)
 
     # タイトルを中央に折り返し描画
@@ -57,6 +66,12 @@ def _make_background_image(
     line_height = font_size + 20
     total_height = line_height * len(lines)
     y = (size[1] - total_height) // 2
+
+    if photo_path is not None:
+        # 写真の上に文字を乗せるので、視認性のための半透明の帯を敷く
+        pad = 40
+        draw.rectangle([0, y - pad, size[0], y + total_height + pad], fill=(0, 0, 0, 130))
+
     for line in lines:
         bbox = draw.textbbox((0, 0), line, font=font)
         x = (size[0] - (bbox[2] - bbox[0])) // 2
@@ -133,7 +148,8 @@ def build_video(
         else:
             logger.warning("BGM ファイルが見つかりません: %s", bgm_full_path)
 
-    bg_img = _make_background_image(title, size, bg_color, font_path, title_font_size)
+    photo_path = generate_background_image(title, body, settings)
+    bg_img = _make_background_image(title, size, bg_color, font_path, title_font_size, photo_path=photo_path)
     bg_img_path = settings.output_dir / "_bg_frame.png"
     bg_img.save(bg_img_path)
     background_clip = ImageClip(str(bg_img_path)).set_duration(duration)
@@ -164,6 +180,8 @@ def build_video(
 
     # 一時的なフレーム画像を削除
     bg_img_path.unlink(missing_ok=True)
+    if photo_path is not None:
+        photo_path.unlink(missing_ok=True)
     for cap in captions:
         (settings.output_dir / f"_cap_{int(cap.start * 1000)}.png").unlink(missing_ok=True)
 
