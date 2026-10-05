@@ -86,7 +86,7 @@ topics:
 - id: brain-day22
   title: 脳が歓喜！科学的に証明された最強の学習法とは？
   prompt: 脳科学に基づいた効果的な学習法（分散学習、アクティブリコールなど）を紹介する。
-  status: pending
+  status: done
 - id: brain-day23
   title: 三日坊主はもう終わり！習慣は脳を変える最強メソッド
   prompt: 習慣形成が脳の神経回路を強化し、自動化されるメカニズム（大脳基底核の役割）を解説する。
