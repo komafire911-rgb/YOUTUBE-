@@ -102,7 +102,7 @@ topics:
 - id: brain-day26
   title: 運動すると脳が若返る！？驚きの脳活性化メカニズム
   prompt: 運動が脳由来神経栄養因子（BDNF）の分泌を促進し、記憶力向上や気分安定に寄与することを解説する。
-  status: pending
+  status: done
 - id: brain-day27
   title: 脳はAIを超えている！？驚きの違いと共通点とは
   prompt: AI（人工知能）と人間の脳の基本的な処理メカニズムの類似点や根本的な違いを比較する。
