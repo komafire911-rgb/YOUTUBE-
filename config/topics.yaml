@@ -106,7 +106,7 @@ topics:
 - id: brain-day27
   title: 脳はAIを超えている！？驚きの違いと共通点とは
   prompt: AI（人工知能）と人間の脳の基本的な処理メカニズムの類似点や根本的な違いを比較する。
-  status: pending
+  status: done
 - id: brain-day28
   title: 脳の老化は防げる！あなたの脳を若返らせる意外な秘訣
   prompt: 健康的な食生活、適度な運動、社会的な交流、新しい学習などが脳の老化を遅らせる効果があることを紹介する。
