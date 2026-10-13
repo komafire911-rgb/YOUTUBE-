@@ -118,4 +118,4 @@ topics:
 - id: brain-day30
   title: 脳科学の未来がやばい！人間の限界を超えるテクノロジー革命
   prompt: 今後の脳科学研究の展望（脳疾患の治療、ブレイン・マシン・インターフェースなど）を紹介する。
-  status: pending
+  status: done
