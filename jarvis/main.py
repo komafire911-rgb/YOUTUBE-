@@ -12,7 +12,7 @@ load_dotenv()
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--persona", default=str(Path(__file__).parent / "personas" / "ai_masato.yaml"))
+    ap.add_argument("--persona", default=str(Path(__file__).parent / "personas" / "ai_hayato.yaml"))
     ap.add_argument("--voice-out", action="store_true", help="返答を音声で読み上げる")
     ap.add_argument("--voice-in", action="store_true", help="マイクから音声入力する")
     a = ap.parse_args()
