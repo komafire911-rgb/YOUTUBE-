@@ -1,0 +1,7 @@
+anthropic>=0.40
+pyyaml>=6.0
+requests>=2.31
+python-dotenv>=1.0
+# 音声入力を使う場合のみ:
+# SpeechRecognition>=3.10
+# PyAudio>=0.2.14
