@@ -1,0 +1,7 @@
+body { line-height: 1.8; }
+figure { margin: 1.2em 0; text-align: center; page-break-inside: avoid; }
+figure img { max-width: 100%; height: auto; }
+figcaption { font-size: 0.8em; color: #555; margin-top: 0.3em; text-align: center; }
+h1 { page-break-before: always; }
+table { border-collapse: collapse; font-size: 0.9em; }
+td, th { border: 1px solid #999; padding: 0.2em 0.4em; }
