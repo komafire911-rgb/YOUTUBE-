@@ -16,8 +16,8 @@ for fn in sys.argv[1:]:
 print('figures:',n)
 PY
 OUT="$K/『やる気がなくても動ける脳科学の5分習慣』_Kindle原稿"
-pandoc $K/meta.yaml $FILES -f markdown+pipe_tables -o "$OUT.docx" --resource-path=. 2>&1 | grep -v -i "translation\|Abstract\|ja.yaml" || true
-pandoc $K/meta.yaml $FILES -f markdown+pipe_tables -o "$OUT.epub" --toc --toc-depth=1 --split-level=1 --css=$K/epub.css --resource-path=. 2>&1 | grep -v -i "translation\|Abstract\|ja.yaml" || true
+pandoc $K/meta.yaml $FILES -f markdown+pipe_tables --strip-comments -o "$OUT.docx" --resource-path=. 2>&1 | grep -v -i "translation\|Abstract\|ja.yaml" || true
+pandoc $K/meta.yaml $FILES -f markdown+pipe_tables --strip-comments -o "$OUT.epub" --toc --toc-depth=1 --split-level=1 --css=$K/epub.css --resource-path=. 2>&1 | grep -v -i "translation\|Abstract\|ja.yaml" || true
 python3 -I - "$OUT.docx" <<'PY'
 import sys
 from docx import Document
