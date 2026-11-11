@@ -19,3 +19,6 @@
 修正・追加の指示は「イラスト修正指示書.md」を参照。
 | fig14_ch4_notebook | 第4章 | 新規作成 |
 | fig15_ch2_rewrite_example | 第2章ワーク | 新規作成(記入例) |
+
+## 図解(v_*.jpg、55枚)
+book/tools/figkit.py で作成。章扉・節の図解・りんじのDayカード・まとめカード。キャラクターは kit/ のアイコン(NotebookLMの絵から切り出し)。
