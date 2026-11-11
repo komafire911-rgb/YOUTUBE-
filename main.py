@@ -43,7 +43,9 @@ def run_once() -> int:
     logger.info("テーマ取得: %s - %s", topic.id, topic.title)
 
     try:
-        script = generate_script(topic.title, topic.prompt, settings)
+        script = generate_script(
+            topic.title, topic.prompt, settings, topic.narration, topic.description
+        )
         logger.info("台本生成完了（%d文字）", len(script.body))
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -64,8 +66,12 @@ def run_once() -> int:
             settings=settings,
         )
 
-        mark_topic_status(topic.id, "done")
-        logger.info("テーマ %s の処理が完了しました。", topic.id)
+        if settings.dry_run:
+            # DRY_RUN では実際に投稿していないので、テーマを消費しない（pending のまま残す）
+            logger.info("[DRY_RUN] テーマ %s は未投稿のため pending のまま残します。", topic.id)
+        else:
+            mark_topic_status(topic.id, "done")
+            logger.info("テーマ %s の処理が完了しました。", topic.id)
         return 0
 
     except Exception:

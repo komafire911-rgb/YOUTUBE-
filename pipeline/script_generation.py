@@ -73,8 +73,29 @@ def _fallback_script(title: str, prompt: str) -> GeneratedScript:
     return GeneratedScript(title=title, body=narration, description=description, hashtags=hashtags)
 
 
-def generate_script(title: str, prompt: str, settings: Settings) -> GeneratedScript:
-    """テーマ（title, prompt）から「楽々脳活」フォーマットの台本を生成する。"""
+_DEFAULT_HASHTAGS = ["#脳科学", "#雑学", "#脳活", "#楽々脳活", "#Shorts"]
+
+
+def generate_script(
+    title: str,
+    prompt: str,
+    settings: Settings,
+    narration: str = "",
+    description: str = "",
+) -> GeneratedScript:
+    """テーマ（title, prompt）から「楽々脳活」フォーマットの台本を生成する。
+
+    topics.yaml に narration（事前に書いた台本）があれば、API を呼ばずにそれを使う。
+    """
+    if narration.strip():
+        logger.info("topics.yaml の事前作成台本を使用します（APIは呼びません）。")
+        return GeneratedScript(
+            title=title,
+            body=narration.strip(),
+            description=description.strip() or narration.strip(),
+            hashtags=list(_DEFAULT_HASHTAGS),
+        )
+
     if not settings.anthropic_api_key:
         logger.warning("ANTHROPIC_API_KEY が未設定のため、簡易テンプレートで台本を生成します。")
         return _fallback_script(title, prompt)

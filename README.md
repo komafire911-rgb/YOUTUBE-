@@ -68,7 +68,12 @@ topics:
     title: "動画のタイトル"
     prompt: "台本生成に渡す内容の指示・要点"
     status: "pending"
+    # 任意: 事前に書いた台本。あれば台本生成API（ANTHROPIC_API_KEY）を使わずそのまま読み上げる
+    narration: "ナレーション本文（150〜220文字程度）"
 ```
+
+`DRY_RUN=true` の間は実際に投稿していないため、テーマは `pending` のまま残ります
+（`done` になるのは YouTube へ実際にアップロードできたときだけです）。
 
 ### 3. 必要なAPIキーを用意する
 

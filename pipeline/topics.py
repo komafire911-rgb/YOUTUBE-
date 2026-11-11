@@ -16,6 +16,9 @@ class Topic:
     title: str
     prompt: str
     status: str = "pending"
+    # 事前に書いておいた台本（あれば台本生成APIを呼ばずにそのまま使う）
+    narration: str = ""
+    description: str = ""
 
 
 def _load_raw() -> dict[str, Any]:
@@ -25,7 +28,7 @@ def _load_raw() -> dict[str, Any]:
 
 def _save_raw(data: dict[str, Any]) -> None:
     with open(TOPICS_PATH, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+        yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False, width=1000)
 
 
 def next_pending_topic() -> Topic | None:
@@ -38,6 +41,8 @@ def next_pending_topic() -> Topic | None:
                 title=item["title"],
                 prompt=item["prompt"],
                 status=item.get("status", "pending"),
+                narration=item.get("narration", "") or "",
+                description=item.get("description", "") or "",
             )
     return None
 
