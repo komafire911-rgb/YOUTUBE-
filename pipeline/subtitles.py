@@ -19,22 +19,41 @@ def _split_into_sentences(text: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+_PARTICLES = "をはがにで"
+
+
+def _split_long(clause: str, max_chars: int) -> list[str]:
+    """読点の無い長い節を、助詞の直後（なければ中央）で2つに分ける。"""
+    if len(clause) <= max_chars:
+        return [clause]
+    mid = len(clause) // 2
+    # 中央に近い助詞の直後を探す（単語の途中で切らないため）
+    candidates = [i + 1 for i, ch in enumerate(clause[:-2]) if ch in _PARTICLES and i >= 3]
+    cut = min(candidates, key=lambda i: abs(i - mid)) if candidates else mid
+    return _split_long(clause[:cut], max_chars) + _split_long(clause[cut:], max_chars)
+
+
 def _chunk_sentence(sentence: str, max_chars: int) -> list[str]:
+    """1文を、読点（、）の位置で意味のまとまりごとに字幕チャンクへ分ける。"""
     if len(sentence) <= max_chars:
         return [sentence]
-    chunks = []
+    clauses = [c for c in re.split(r"(?<=、)", sentence) if c]
+    chunks: list[str] = []
     current = ""
-    for ch in sentence:
-        current += ch
-        if len(current) >= max_chars:
+    for clause in clauses:
+        if current and len(current) + len(clause) > max_chars:
             chunks.append(current)
             current = ""
+        current += clause
     if current:
         chunks.append(current)
-    return chunks
+    result: list[str] = []
+    for chunk in chunks:
+        result.extend(_split_long(chunk, max_chars))
+    return result
 
 
-def build_captions(text: str, total_duration: float, max_chars: int = 30) -> list[Caption]:
+def build_captions(text: str, total_duration: float, max_chars: int = 15) -> list[Caption]:
     """本文を字幕チャンクに分割し、動画全体の長さに応じて等分の表示時間を割り当てる。
 
     正確な音声同期（単語単位のタイムスタンプ）は行わず、文字数の比率で

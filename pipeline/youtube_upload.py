@@ -31,6 +31,16 @@ def _build_youtube_client(settings: Settings):
     return build("youtube", "v3", credentials=creds)
 
 
+def build_description(description: str, cfg: dict) -> str:
+    """概要欄の先頭に本の案内（book_cta + book_url）を付ける。book_url が空なら何もしない。"""
+    book_url = (cfg.get("book_url") or "").strip()
+    if not book_url:
+        return description
+    cta = (cfg.get("book_cta") or "").strip()
+    head = f"{cta}\n{book_url}" if cta else book_url
+    return f"{head}\n\n{description}"
+
+
 def upload_video(
     video_path: Path,
     title: str,
@@ -42,12 +52,14 @@ def upload_video(
     戻り値: アップロードした動画のID（DRY_RUN時は None）
     """
     cfg = settings.youtube_cfg
+    description = build_description(description, cfg)
 
     if settings.dry_run:
         logger.info(
             "[DRY_RUN] YouTube へのアップロードをスキップします。"
-            " title=%r, privacy=%s, file=%s",
+            " title=%r, description=%r, privacy=%s, file=%s",
             title,
+            description[:80],
             cfg.get("privacy_status", "private"),
             video_path,
         )

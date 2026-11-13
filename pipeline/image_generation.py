@@ -33,7 +33,7 @@ def generate_background_image(title: str, narration: str, settings: Settings) ->
     if not image_cfg.get("enabled", True):
         return None
     if not settings.gemini_api_key:
-        logger.warning("GEMINI_API_KEY が未設定のため、背景イラスト生成をスキップします（単色背景を使用）。")
+        logger.warning("GEMINI_API_KEY が未設定のため、背景イラスト生成をスキップします（デザイン背景を使用）。")
         return None
 
     try:

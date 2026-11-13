@@ -107,6 +107,11 @@ topics:
 
 `client_secret.json` や `.env` は `.gitignore` 対象なので、絶対にコミットしないでください。
 
+#### 概要欄に本の案内を入れる（任意）
+
+`config/config.yaml` の `youtube.book_url` に Kindle本などの商品ページURLを入れると、
+すべての動画の概要欄の先頭に `book_cta` の一文とURLが自動で入ります（空の間は何も追加されません）。
+
 ### 4. GitHub Actions で定期実行する
 
 `.github/workflows/youtube-automation.yml` が毎日 UTC 9:00（日本時間18:00）に
