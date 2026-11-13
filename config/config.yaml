@@ -52,13 +52,18 @@ video:
   background_color: [15, 20, 40]
   font_path: "assets/fonts/NotoSansJP-Bold.ttf"
   font_size: 72
-  subtitle_font_size: 56
+  subtitle_font_size: 60
+  channel_name: "楽々脳活"   # 画面下に小さく表示するチャンネル名（空にすると非表示）
   bgm_path: null          # 例: "assets/bgm/bgm.mp3"（未設定ならBGMなし）
   bgm_volume: 0.12
 
 youtube:
   category_id: "27"       # Education（教育）
   default_tags: ["脳科学", "脳トレ", "雑学", "楽々脳活", "AI自動生成"]
+  # 概要欄の先頭に入れる本の案内。book_url が空の間は何も追加されない。
+  # Kindle本のAmazon商品ページのURLを入れると、全動画の概要欄に自動で入る。
+  book_url: ""
+  book_cta: "📘 動画の内容をもっと深く:『やる気がなくても動ける脳科学の5分習慣』"
   privacy_status: "private"  # env の YOUTUBE_PRIVACY_STATUS で上書き可。公開に切り替える際は README.md の注意事項を必ず確認すること
 
 output_dir: "output"

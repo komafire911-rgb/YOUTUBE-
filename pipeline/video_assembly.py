@@ -27,21 +27,102 @@ def _load_font(font_path: str, size: int) -> ImageFont.FreeTypeFont:
         return ImageFont.load_default()
 
 
+# 行頭に来てはいけない文字（禁則）
+_NO_LINE_START = "、。！？!?」』）)ー・ぁぃぅぇぉっゃゅょァィゥェォッャュョ％%"
+
+
+# この文字の直後は改行しても読みやすい
+_GOOD_BREAK_AFTER = "、。！？!?」』をはがにでもの"
+
+
+def _text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont) -> int:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0]
+
+
 def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
-    """1文字ずつ足していき、指定した幅を超えたら改行するシンプルな日本語向け折り返し。"""
-    lines: list[str] = []
-    current = ""
+    """日本語向けの折り返し。行の長さをなるべく揃え、行頭に句読点などが来ないようにする。"""
+    # まず幅いっぱいまで詰めて、必要な行数を求める
+    count, current = 1, ""
     for ch in text:
-        trial = current + ch
-        bbox = draw.textbbox((0, 0), trial, font=font)
-        if bbox[2] - bbox[0] > max_width and current:
-            lines.append(current)
+        if current and _text_width(draw, current + ch, font) > max_width:
+            count += 1
             current = ch
         else:
-            current = trial
-    if current:
-        lines.append(current)
+            current += ch
+    if count == 1:
+        return [text]
+
+    # 各行がほぼ同じ文字数になるように分け直す（最終行に1〜2文字だけ残るのを防ぐ）。
+    # 区切りの良い位置を優先した結果どこかの行が幅を超えたら、行数を1つ増やしてやり直す。
+    while True:
+        lines = _balanced_lines(draw, text, font, max_width, count)
+        if count >= len(text) or all(_text_width(draw, line, font) <= max_width for line in lines):
+            return lines
+        count += 1
+
+
+def _balanced_lines(
+    draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int, count: int
+) -> list[str]:
+    lines: list[str] = []
+    rest = text
+    for remaining in range(count, 1, -1):
+        cut = -(-len(rest) // remaining)
+        # 近くに区切りの良い位置（句読点・助詞の直後）があれば、そこで改行する
+        for delta in (0, 1, -1, 2, -2, 3, -3):
+            pos = cut + delta
+            if 2 <= pos < len(rest) and rest[pos - 1] in _GOOD_BREAK_AFTER and rest[pos] not in _NO_LINE_START:
+                cut = pos
+                break
+        while cut < len(rest) and rest[cut] in _NO_LINE_START:
+            cut += 1
+        while cut > 1 and _text_width(draw, rest[:cut], font) > max_width:
+            cut -= 1
+        lines.append(rest[:cut])
+        rest = rest[cut:]
+    if rest:
+        lines.append(rest)
     return lines
+
+
+# 単色背景の代わりに使うグラデーション配色（上の色, 下の色, アクセント色）
+_PALETTES = [
+    ((24, 32, 78), (86, 40, 120), (255, 200, 87)),
+    ((10, 54, 84), (20, 110, 120), (255, 214, 102)),
+    ((60, 22, 72), (150, 50, 90), (255, 190, 120)),
+    ((16, 44, 60), (40, 90, 140), (140, 230, 210)),
+    ((48, 28, 20), (140, 70, 40), (255, 220, 130)),
+]
+
+
+def _make_designed_background(title: str, size: tuple[int, int]) -> tuple[Image.Image, tuple[int, int, int]]:
+    """APIを使わずに描く、グラデーション＋光の円のデザイン背景。タイトルごとに配色が変わる。"""
+    import zlib
+
+    seed = zlib.crc32(title.encode("utf-8"))
+    top, bottom, accent = _PALETTES[seed % len(_PALETTES)]
+    w, h = size
+    column = Image.new("RGB", (1, h))
+    for y in range(h):
+        t = y / max(h - 1, 1)
+        column.putpixel((0, y), tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3)))
+    img = column.resize((w, h))
+
+    # ぼんやり光る円をいくつか重ねて、のっぺりした印象を避ける
+    from PIL import ImageFilter
+
+    glow = Image.new("RGBA", size, (0, 0, 0, 0))
+    gdraw = ImageDraw.Draw(glow)
+    for i in range(6):
+        v = zlib.crc32(f"{title}-{i}".encode("utf-8"))
+        cx, cy = v % w, (v >> 8) % h
+        r = 140 + (v >> 16) % 260
+        color = accent if i % 2 == 0 else (255, 255, 255)
+        gdraw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(*color, 46))
+    glow = glow.filter(ImageFilter.GaussianBlur(60))
+    img = Image.alpha_composite(img.convert("RGBA"), glow).convert("RGB")
+    return img, accent
 
 
 def _make_background_image(
@@ -51,11 +132,13 @@ def _make_background_image(
     font_path: str,
     font_size: int,
     photo_path: Path | None = None,
+    channel_name: str = "",
 ) -> Image.Image:
     if photo_path is not None:
         img = ImageOps.fit(Image.open(photo_path).convert("RGB"), size, method=Image.LANCZOS)
+        accent = (255, 255, 255)
     else:
-        img = Image.new("RGB", size, color=bg_color)
+        img, accent = _make_designed_background(title, size)
     draw = ImageDraw.Draw(img, "RGBA")
     font = _load_font(font_path, font_size)
 
@@ -65,12 +148,19 @@ def _make_background_image(
 
     line_height = font_size + 20
     total_height = line_height * len(lines)
-    y = (size[1] - total_height) // 2
+    # タイトルは画面の上寄りに置き、中央〜下を字幕のために空ける
+    y = int(size[1] * 0.16)
 
-    if photo_path is not None:
-        # 写真の上に文字を乗せるので、視認性のための半透明の帯を敷く
-        pad = 40
-        draw.rectangle([0, y - pad, size[0], y + total_height + pad], fill=(0, 0, 0, 130))
+    # 視認性のための半透明カードと、上部のアクセント線
+    pad = 50
+    card = [int(size[0] * 0.06), y - pad, int(size[0] * 0.94), y + total_height + pad]
+    draw.rounded_rectangle(card, radius=36, fill=(0, 0, 0, 120))
+    draw.rounded_rectangle([card[0] + 60, card[1] - 6, card[2] - 60, card[1] + 6], radius=6, fill=(*accent, 255))
+
+    if channel_name:
+        small = _load_font(font_path, 40)
+        bbox = draw.textbbox((0, 0), channel_name, font=small)
+        draw.text(((size[0] - (bbox[2] - bbox[0])) // 2, int(size[1] * 0.93)), channel_name, font=small, fill=(255, 255, 255, 200))
 
     for line in lines:
         bbox = draw.textbbox((0, 0), line, font=font)
@@ -98,13 +188,13 @@ def _make_caption_image(
     max_line_w = max(line_widths) if line_widths else 0
     total_text_h = line_height * len(lines)
 
-    pad_x, pad_y = 30, 16
+    pad_x, pad_y = 40, 26
     box_x0 = (size[0] - max_line_w) // 2 - pad_x
-    box_y0 = size[1] - int(size[1] * 0.18) - total_text_h - pad_y
+    box_y0 = int(size[1] * 0.62) - total_text_h // 2 - pad_y
     box_x1 = (size[0] + max_line_w) // 2 + pad_x
     box_y1 = box_y0 + total_text_h + pad_y * 2
 
-    draw.rounded_rectangle([box_x0, box_y0, box_x1, box_y1], radius=12, fill=(0, 0, 0, 160))
+    draw.rounded_rectangle([box_x0, box_y0, box_x1, box_y1], radius=24, fill=(0, 0, 0, 170))
 
     y = box_y0 + pad_y
     for line, bbox in zip(lines, line_boxes):
@@ -149,7 +239,15 @@ def build_video(
             logger.warning("BGM ファイルが見つかりません: %s", bgm_full_path)
 
     photo_path = generate_background_image(title, body, settings)
-    bg_img = _make_background_image(title, size, bg_color, font_path, title_font_size, photo_path=photo_path)
+    bg_img = _make_background_image(
+        title,
+        size,
+        bg_color,
+        font_path,
+        title_font_size,
+        photo_path=photo_path,
+        channel_name=cfg.get("channel_name", ""),
+    )
     bg_img_path = settings.output_dir / "_bg_frame.png"
     bg_img.save(bg_img_path)
     background_clip = ImageClip(str(bg_img_path)).set_duration(duration)
