@@ -36,6 +36,7 @@ function load(k) { try { return JSON.parse(localStorage.getItem(k) || '{}'); } c
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* 保存不可でも動作 */ } }
 
 /* ---------------- 音声 ---------------- */
+let speakingN = 0, listening = false, autoListen = false, rec = null;
 const TTS_REPLACE = [[/SpO₂|SpO2/g, 'エスピーオーツー'], [/ECG/g, 'イーシージー'], [/JCS/g, 'ジェイシーエス'], [/AED/g, 'エーイーディー'],
   [/BVM/g, 'ビーブイエム'], [/CPR/g, 'シーピーアール'], [/VF/g, 'ブイエフ'], [/ROSC/g, 'ロスク'], [/mg\/dL/g, 'ミリグラム パー デシリットル'],
   [/mmHg/g, 'ミリメートル エイチジー'], [/℃/g, '度'], [/%/g, 'パーセント'], [/\//g, 'の']];
@@ -56,9 +57,11 @@ function speak(text, kind = 'scene') {
   const want = pv ? settings.pVoice : settings.sysVoice;
   const v = voices.find(x => x.voiceURI === want) || (pv && voices.length > 1 ? voices[voices.length - 1] : voices[0]);
   if (v) u.voice = v;
+  speakingN++; if (listening) abortListen();   // 読み上げ中はマイクを止める(自分の声を拾わない)
+  u.onend = u.onerror = () => { speakingN = Math.max(0, speakingN - 1); if (speakingN === 0 && autoListen) setTimeout(startListen, 600); };
   speechSynthesis.speak(u);
 }
-function stopSpeech() { if ('speechSynthesis' in window) speechSynthesis.cancel(); }
+function stopSpeech() { speakingN = 0; if ('speechSynthesis' in window) speechSynthesis.cancel(); }
 
 /* ---------------- 状態 ---------------- */
 let screen = 'home';
@@ -76,7 +79,7 @@ function pick(v) { if (v == null) return null; if (typeof v === 'string') return
 function roleLabel(r) { const n = settings.names[r]; return ROLES[r].name + (n ? '(' + n + ')' : ''); }
 
 /* ---------------- 画面切替 ---------------- */
-function go(s) { screen = s; render(); window.scrollTo(0, 0); }
+function go(s) { screen = s; if (s !== 'sim') { autoListen = false; abortListen(); } render(); window.scrollTo(0, 0); }
 function render() {
   const app = $('#app');
   if (screen === 'home') app.innerHTML = homeHTML();
@@ -153,7 +156,13 @@ function simHTML() {
     </section>
     <section class="col mid">
       <div class="panel logpanel"><h3>📋 現場の状況</h3><div id="log" class="log"></div>
-        <div id="phaseBtn" class="phasebtn"></div></div>
+        <div id="phaseBtn" class="phasebtn"></div>
+        <div class="voicebar">
+          <div class="vrow"><button class="btn primary mic" id="micBtn">🎤 話す</button>
+            <label class="chk"><input type="checkbox" id="autoChk"> 常時聴取</label><span id="micState" class="muted"></span></div>
+          <div id="transcript" class="transcript">例：「隊員、バイタル測定」「血圧は?」「酸素10リットル」「機関員、ストレッチャー準備」「ご家族に話を聞く」「病院に連絡」</div>
+          <div class="vrow"><input class="inp" id="cmdInput" placeholder="キーボードで指示を入力(例：隊員、血圧測定)"><button class="btn" id="cmdSend">送信</button></div>
+        </div></div>
     </section>
     <section class="col right">
       <div class="tabs" id="tabs"></div>
@@ -169,6 +178,7 @@ function renderSim() {
   $('#btnMute').textContent = settings.voice ? '🔊 音声ON' : '🔇 音声OFF';
   renderPhases(); renderVitals(); renderLog(); renderActions(); renderPhaseBtn(); renderStage(); renderTrainer();
   $('#timer').textContent = fmtT(s.elapsed);
+  initVoiceBar();
 }
 function renderPhases() {
   const P = [['dispatch', '指令'], ['scene', '現場活動'], ['transport', '搬送'], ['ended', '引継ぎ']];
@@ -194,7 +204,7 @@ function renderStage() {
   const sc = s.sc;
   $('#stagebox').innerHTML = `<h3>🙂 患者情報</h3><div class="pinfo">${esc(sc.patientInfo || (sc.dispatch.replace(/^救急指令。/, '')))}</div>`;
 }
-const LOG_ICON = { dispatch: '📻', scene: '🏠', patient: '🗣️', family: '👥', monitor: '📟', crew: '▶', result: '✅', fb: '⚠️', sys: 'ℹ️', mc: '☎️', hospital: '🏥' };
+const LOG_ICON = { say: '🎙️', dispatch: '📻', scene: '🏠', patient: '🗣️', family: '👥', monitor: '📟', crew: '▶', result: '✅', fb: '⚠️', sys: 'ℹ️', mc: '☎️', hospital: '🏥' };
 function renderLog() {
   const el = $('#log'); if (!el) return;
   el.innerHTML = SIM.log.map(e => `<div class="le ${e.kind} ${e.lv || ''}"><span class="lt">${fmtT(e.t)}</span><span class="li">${LOG_ICON[e.kind] || '•'}</span><div class="lx">${e.who ? `<b>${esc(e.who)}</b> ` : ''}${esc(e.text)}</div></div>`).join('');
@@ -227,6 +237,8 @@ function renderActions() {
 }
 
 /* ---------------- 進行ロジック ---------------- */
+let PFX = true;
+const rep = id => (PFX ? ROLES[ACT[id].role].name + '、' : '');
 function startSim(sc) {
   SIM = newSim(sc);
   screen = 'sim'; render();
@@ -249,6 +261,7 @@ function arrive() {
 }
 function tick() {
   if (!SIM || SIM.ended || SIM.phase === 'dispatch') return;
+  if ('speechSynthesis' in window && speakingN > 0 && !speechSynthesis.speaking && !speechSynthesis.pending) speakingN = 0;
   SIM.elapsed++;
   $('#timer').textContent = fmtT(SIM.elapsed);
   const w = SIM.sc.worsen;
@@ -288,7 +301,8 @@ function setStage(to, say) {
   renderVitals(); renderTrainer();
 }
 
-function run(id) {
+function run(id, opts = {}) {
+  PFX = opts.prefix !== false;
   if (SIM.phase === 'dispatch' || SIM.ended) return;
   const a = ACT[id], sc = SIM.sc, who = roleLabel(a.role);
   // 搬送前の引継ぎは不可
@@ -325,7 +339,7 @@ function produceResult(id) {
     if (id === 'o_resp' && !extra) extra = null;
     const text = logs.join(' / ') + (extra ? '。' + extra : '');
     addLog('monitor', text, { who: '測定' });
-    speak(parts.join('、') + (extra ? '。' + extra : ''), 'monitor');
+    speak(rep(id) + parts.join('、') + (extra ? '。' + extra : ''), 'monitor');
     if (id === 'o_jcs') { const sp = (sc.speech || {})[SIM.stage] || (sc.speech || {}).initial; if (sp) { addLog('patient', sp, { who: '傷病者' }); speak(sp, 'patient'); } }
     return;
   }
@@ -343,7 +357,7 @@ function produceResult(id) {
   let t = pick((sc.findings || {})[id]) || DEFAULT_RESULT[id] || '実施しました。';
   const kind = id === 'c_hospital' ? 'hospital' : id === 'c_mc' ? 'mc' : 'scene';
   addLog(id === 'c_hospital' ? 'hospital' : id === 'c_mc' ? 'mc' : 'result', t, { who: id === 'c_mc' ? '医師' : id === 'c_hospital' ? '病院' : '' });
-  speak(t, kind);
+  speak((kind === 'scene' ? rep(id) : '') + t, kind);
 }
 function evalTransitions(id) {
   (SIM.sc.transitions || []).forEach((tr, i) => {
@@ -407,7 +421,7 @@ function debriefHTML() {
         <ul class="chk">${byRole(r).map(i => `<li class="${i.ok ? 'y' : 'n'}">${i.ok ? '✔' : '✖'} ${esc(i.label)}${i.crit ? ' <em>重要</em>' : ''}${i.ok ? '' : `<div class="why">${esc(i.why)}</div>`}</li>`).join('') || '<li class="muted">この役割の評価項目はありません</li>'}</ul>
       </section>`).join('')}</div>
     <section class="panel"><h3>💡 この想定のポイント</h3><ul>${(sc.points || []).map(p => `<li>${esc(p)}</li>`).join('')}</ul></section>
-    <section class="panel"><h3>🕒 活動の時系列</h3><ol class="tl">${s.log.filter(e => e.kind === 'crew' || e.kind === 'fb').map(e => `<li class="${e.kind} ${e.lv || ''}"><span class="lt">${fmtT(e.t)}</span> ${e.who ? '<b>' + esc(e.who) + '</b> ' : ''}${esc(e.text)}</li>`).join('')}</ol></section>
+    <section class="panel"><h3>🕒 活動の時系列</h3><ol class="tl">${s.log.filter(e => e.kind === 'crew' || e.kind === 'fb' || e.kind === 'say').map(e => `<li class="${e.kind} ${e.lv || ''}"><span class="lt">${fmtT(e.t)}</span> ${e.who ? '<b>' + esc(e.who) + '</b> ' : ''}${esc(e.text)}</li>`).join('')}</ol></section>
     <div class="row center">
       <button class="btn primary big" data-act="again">🔁 同じ想定をもう一度</button>
       <button class="btn big" data-act="random">🎲 別の想定</button>
@@ -462,6 +476,186 @@ function openSettings() {
   $('#sTest', d).onclick = () => { apply(); stopSpeech(); speak('指令。市内、住宅。68歳男性、呼吸困難。意識あり。', 'dispatch'); speak('はぁ…はぁ…苦しい…', 'patient'); };
   const apply = () => { settings.voice = $('#sVoice', d).checked; settings.rate = +$('#sRate', d).value; settings.sysVoice = $('#sSys', d).value; settings.pVoice = $('#sP', d).value; settings.auto = +$('#sAuto', d).value; saveSettings(); };
   $('#sClose', d).onclick = () => { apply(); d.remove(); if (SIM && screen === 'sim') renderSim(); };
+}
+
+
+/* ---------------- 音声操作(口頭指示・口頭報告) ---------------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const O2LOW = /カニュラ|鼻|低流量|(^|[^0-9])[123](リットル|l)/;
+// [行動ID(配列) または 関数, 正規表現] 具体的なものを先に。一致部分は消費して重複判定を防ぐ
+const VR = [
+  [['o_resp', 'o_pulse', 'o_bp', 'o_spo2', 'o_jcs', 'o_temp'], /バイタル/],
+  [['c_primary'], /初期評価|abcd|abc|エービーシー|気道.{0,3}呼吸.{0,3}循環/],
+  [['c_secondary'], /全身観察|頭から足|全身を見/],
+  [['o_12'], /(12|十二|じゅうに)誘導(心電図)?/],
+  [['o_ecg'], /心電図|モニター|モニタ|心電/],
+  [['o_spo2'], /spo2|spo|エスピーオー|サチュ|酸素飽和|パルスオキシ|パルオキ/],
+  [['t_iv'], /静脈路|ルート確保|ルートを取|ライン確保|点滴確保|点滴のルート/],
+  [['t_glucose'], /ブドウ糖|50%|グルコース/],
+  [['t_fluid'], /輸液|リンゲル|ラクテック|点滴/],
+  [['t_epi'], /エピペン|アドレナリン|エピネフリン/],
+  [['d_stretch'], /ストレッチャー(準備|搬入|を)?|担架/],
+  [['d_drive'], /出発|出して|発進|搬送開始|走らせ|現場を出|現場出|向かって|向かえ/],
+  [['c_handover'], /引継|引き継|病着|病院(に)?到着|到着しました/],
+  [['c_decide'], /搬送決定|搬送する|搬送を決|搬送します|収容|ロード.{0,3}ゴー|ロードアンドゴー/],
+  [['c_hospital'], /病院|選定|受け入れ|受入|搬送先/],
+  [['c_mc'], /指示要請|医師|ドクター(?!カー|ヘリ)|オンライン|エムシー|mc|特定行為/],
+  [['c_support'], /応援|ドクターカー|ドクターヘリ|ヘリ|pa連携/],
+  [['o_bp'], /血圧|ケツアツ/],
+  [['o_glu'], /血糖/],
+  [['o_temp'], /体温|検温|熱を|熱は/],
+  [['o_pupil'], /瞳孔|対光/],
+  [['o_lung'], /聴診|呼吸音|肺音|胸の音/],
+  [['o_resp'], /呼吸数|呼吸観察|呼吸状態|呼吸/],
+  [['o_pulse'], /脈拍|脈/],
+  [['o_jcs'], /意識レベル|ジェイシーエス|jcs|声かけ|声掛け|意識/],
+  [['o_abd'], /腹部|お腹を|おなかを/],
+  [['o_skin'], /皮膚|冷汗|顔色/],
+  [['o_neuro'], /麻痺|cpss|シーピーエスエス|脳卒中スケール/],
+  [['o_trauma'], /外傷|受傷|けがの|怪我の/],
+  [['t_cpr'], /胸骨圧迫|心臓マッサージ|cpr|シーピーアール|心マ/],
+  [['t_bvm'], /bvm|ビーブイエム|補助換気|バッグ|人工呼吸|換気/],
+  [['t_aed'], /aed|エーイーディー|除細動|パッド|ショックを(かけ|打|実施)|ショックボタン/],
+  [['t_airway'], /気道確保|気道を|吸引|エアウェイ|下顎挙上|頭部後屈/],
+  [['t_hemo'], /止血|直接圧迫|圧迫して|止血帯|圧迫/],
+  [['t_splint'], /固定|シーネ|バインダー|スプリント/],
+  [['t_warm'], /保温|毛布|ブランケット|温め/],
+  [['t_cool'], /冷却|冷や|冷た|アイスパック|氷|日陰|涼し/],
+  [['t_pos_shock'], /下肢挙上|(足|脚)を(上|挙|あげ)|ショック体位/],
+  [['t_pos_semi'], /半坐位|半座位|起坐|起座|座らせ|ファーラー|楽な体位|坐位|座位/],
+  [['t_pos_lat'], /側臥位|回復体位|横向き|横に向け/],
+  [['t_pos_supine'], /仰臥位|仰向け|寝かせ|水平/],
+  [t => (O2LOW.test(t) ? ['t_o2_low'] : ['t_o2_mask']), /酸素|オーツー|オキシジェン|o2/],
+  [['t_oral'], /飲ませ|飲水|水を飲|経口|糖分/],
+  [['x_bite'], /噛ませ|かませ|タオルを(口|噛)|舌を噛/],
+  [['x_walk'], /歩かせ|歩行|歩いて|立たせ|立って/],
+  [['x_nitro'], /ニトロ/],
+  [['d_prep'], /資器材|機材|準備/],
+  [['d_info'], /お薬手帳|薬手帳|保険証/],
+  [['d_record'], /記録|時刻を|メモ/],
+  [['d_route'], /経路|所要時間|渋滞|ルート確認/],
+  [['c_safe'], /安全確認|ビーエスアイ|bsi|感染防御|手袋|現場の安全/],
+  [['c_contact'], /接触|第一印象|話しかけ|声をかけ|聞こえますか|お名前|わかりますか|分かりますか|大丈夫ですか/],
+  [['c_family'], /家族|奥さん|妻|旦那|ご主人|同僚|関係者|目撃|駅員|友人|母親|お母さん/],
+  [['c_history'], /病歴聴取|サンプル|sample|opqrst|オプクエスト|聴取/],
+];
+// 傷病者・家族への質問(SAMPLE各項目)
+const QA = [
+  ['S', '症状', /どうしました|どうされ|症状|どこが痛|痛み|苦しい|主訴|何が/],
+  ['A', 'アレルギー', /アレルギー/],
+  ['M', '内服薬', /薬|服薬|内服|インスリン/],
+  ['P', '既往歴', /既往|持病|病気|通院|かかりつけ|病歴/],
+  ['L', '最後の食事', /食事|食べ/],
+  ['E', '発症の経過', /いつから|経緯|経過|何があった|発症|きっかけ|いつ頃|いつごろ/],
+];
+function parseCommands(t) {
+  let s = t; const hits = [];
+  for (const [ids, re] of VR) {
+    for (;;) {
+      const m = re.exec(s); if (!m) break;
+      hits.push({ pos: m.index, ids: typeof ids === 'function' ? ids(t) : ids });
+      s = s.slice(0, m.index) + '\u0000'.repeat(m[0].length) + s.slice(m.index + m[0].length);
+    }
+  }
+  return { hits: hits.sort((a, b) => a.pos - b.pos), rest: s };
+}
+function roleMentions(t) {
+  const out = []; const re = /救急隊員|隊員|機関員|機関|隊長/g; let m;
+  while ((m = re.exec(t))) out.push({ pos: m.index, role: /隊長/.test(m[0]) ? 'cmd' : /機関/.test(m[0]) ? 'drv' : 'crew' });
+  return out;
+}
+function historyFields() {
+  const o = {};
+  (SIM.sc.history || '').split(/。(?=[SAMPLE]：)/).forEach(seg => { const m = /^([SAMPLE])：([\s\S]*)$/.exec(seg.replace(/。$/, '')); if (m) o[m[1]] = m[2]; });
+  return o;
+}
+function askHistory(qa) {
+  const f = historyFields();
+  const conscious = /^JCS (0|1\b|I-)/.test(vital('jcs'));
+  const kind = conscious ? 'patient' : 'family';
+  qa.forEach(([k, label]) => {
+    const v = f[k] || '不明です';
+    addLog('family', label + '：' + v, { who: conscious ? '傷病者' : '関係者' });
+    speak(label + '、' + v, kind);
+  });
+  if (!SIM.done.c_history) SIM.firstAt.c_history = SIM.elapsed;
+  SIM.done.c_history = (SIM.done.c_history || 0) + 1;
+  addLog('crew', '病歴聴取(口頭)', { who: roleLabel('cmd') });
+  renderActions(); renderTrainer();
+}
+function handleVoice(raw) {
+  if (!SIM || SIM.ended) return;
+  raw = String(raw).trim(); if (!raw) return;
+  const t = raw.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+  addLog('say', raw, { who: '口頭指示' });
+  if (SIM.phase === 'dispatch') {
+    if (SIM.announced && /現着|到着|着きました/.test(t)) arrive();
+    else if (!SIM.announced && /出場|指令|出動/.test(t)) doDispatch();
+    else speak('指令を聞いてから、現着を宣言してください。', 'fb');
+    return;
+  }
+  if (/リピート|もう一度言|もういちど|繰り返し/.test(t)) { act('repeat'); return; }
+  const { hits, rest } = parseCommands(t);
+  const men = roleMentions(t);
+  let ids = [];
+  hits.forEach(h => h.ids.forEach(id => { if (!ids.some(x => x.id === id)) ids.push({ id, pos: h.pos }); }));
+  if (ids.some(x => x.id === 't_pos_shock')) ids = ids.filter(x => x.id !== 't_pos_supine');
+  const qa = ids.some(x => x.id === 'c_history') ? [] : QA.filter(([, , re]) => re.test(rest));
+  if (!ids.length && !qa.length) {
+    addLog('fb', '聞き取れませんでした：「' + raw + '」', { who: 'システム', lv: 'caution' });
+    speak('隊員、もう一度お願いします。', 'monitor'); return;
+  }
+  const names = [...new Set(ids.filter(x => ACT[x.id].role !== 'cmd').map(x => ROLES[ACT[x.id].role].name))];
+  if (names.length) speak(names.join('、') + '、了解。', 'monitor');
+  let last = null;
+  ids.forEach(({ id, pos }) => {
+    if (SIM.ended) return;
+    const a = ACT[id];
+    const mention = [...men].reverse().find(m => m.pos < pos);
+    if (mention && mention.role !== 'cmd' && a.role !== 'cmd' && mention.role !== a.role) {
+      addLog('fb', ROLES[mention.role].name + 'への指示ですが「' + a.label + '」は' + ROLES[a.role].name + 'の担当です(代わりに実施)。', { who: '指導(参考)', lv: 'caution' });
+    }
+    run(id, { prefix: a.role !== last }); last = a.role;
+  });
+  if (qa.length) askHistory(qa);
+}
+function setMicUI() {
+  const b = $('#micBtn'), st = $('#micState'); if (!b) return;
+  b.textContent = listening ? '⏹ 聞き取り中…(タップで中止)' : '🎤 話す';
+  b.classList.toggle('on', listening);
+  st.textContent = !SR ? '音声認識に未対応のブラウザです(Safari/Chromeを使用)' : listening ? '話してください' : '';
+}
+function startListen() {
+  if (!SR || listening || speakingN > 0 || !SIM || SIM.ended || screen !== 'sim') return;
+  try {
+    rec = new SR(); rec.lang = 'ja-JP'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+    rec.onresult = e => {
+      let interim = '', fin = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) { const r = e.results[i]; if (r.isFinal) fin += r[0].transcript; else interim += r[0].transcript; }
+      const tr = $('#transcript'); if (tr) tr.textContent = '🎙 ' + (fin || interim);
+      if (fin) handleVoice(fin);
+    };
+    rec.onend = () => { listening = false; setMicUI(); if (autoListen && speakingN === 0) setTimeout(startListen, 300); };
+    rec.onerror = e => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        autoListen = false; const c = $('#autoChk'); if (c) c.checked = false;
+        const tr = $('#transcript'); if (tr) tr.textContent = '⚠ マイクの使用が許可されていません。ブラウザ/システムの設定でマイクと音声入力(Siri/音声入力)を許可してください。';
+      }
+    };
+    rec.start(); listening = true;
+  } catch (e) { listening = false; }
+  setMicUI();
+}
+function abortListen() { try { if (rec) rec.abort(); } catch (e) { /* ignore */ } listening = false; setMicUI(); }
+function initVoiceBar() {
+  const mic = $('#micBtn'); if (!mic) return;
+  const ac = $('#autoChk'); ac.checked = autoListen;
+  mic.onclick = () => { if (listening) { autoListen = false; ac.checked = false; abortListen(); } else { stopSpeech(); startListen(); } };
+  ac.onchange = () => { autoListen = ac.checked; if (autoListen) { stopSpeech(); startListen(); } else abortListen(); };
+  const send = () => { const i = $('#cmdInput'); const v = i.value.trim(); if (v) { i.value = ''; handleVoice(v); } };
+  $('#cmdSend').onclick = send; $('#cmdInput').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) send(); };
+  if (!SR) mic.disabled = true;
+  setMicUI();
 }
 
 /* ---------------- イベント ---------------- */

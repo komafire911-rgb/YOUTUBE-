@@ -133,3 +133,11 @@ ul.chk em{font-style:normal;font-size:11px;background:var(--ng);border-radius:6p
   .vv .num{font-size:26px}
 }
 .tabs{position:sticky;top:0;z-index:5;background:var(--bg);padding-bottom:6px}
+.voicebar{margin-top:10px;border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px}
+.vrow{display:flex;gap:10px;align-items:center}
+.vrow .inp{flex:1}
+.mic{font-size:18px;min-height:52px;flex:0 0 auto}
+.mic.on{background:#16a34a;border-color:#16a34a;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 8px #16a34a44}}
+.transcript{font-size:14px;color:var(--muted);min-height:20px}
+.le.say{border-color:#e879f9;background:#2a1030}
