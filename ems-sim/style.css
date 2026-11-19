@@ -145,3 +145,16 @@ ul.chk em{font-style:normal;font-size:11px;background:var(--ng);border-radius:6p
   .logpanel{height:56dvh;min-height:420px}
   .col.mid{min-height:0}
 }
+/* ---- 音声のみモード ---- */
+.orb{display:none}
+.simgrid.audio{grid-template-columns:1fr}
+.simgrid.audio .col.left,.simgrid.audio .col.right{display:none}
+.simgrid.audio .logpanel{height:auto!important;min-height:0}
+.simgrid.audio .orb{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;flex:1;min-height:240px;border-radius:24px;background:radial-gradient(circle at 50% 40%,#1e3a5f,#0f172a);border:1px solid var(--line);cursor:pointer;text-align:center;padding:20px;-webkit-user-select:none;user-select:none}
+.orbicon{font-size:84px}.orbtext{font-size:28px;font-weight:800}.orbsub{color:var(--muted);font-size:14px}
+.orb.speaking{box-shadow:inset 0 0 0 6px #38bdf855}
+.orb.listening{background:radial-gradient(circle at 50% 40%,#14532d,#0f172a);animation:pulse 1.2s infinite}
+.simgrid.audio .logpanel h3,.simgrid.audio .log{display:none}
+.simgrid.audio.caps .logpanel h3{display:block}
+.simgrid.audio.caps .log{display:flex;flex:none;max-height:34dvh}
+.simgrid.audio .mic{min-height:64px;font-size:20px}

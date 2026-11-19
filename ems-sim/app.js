@@ -31,13 +31,13 @@ const ACTION_VITALS = {
 
 /* ---------------- 設定 ---------------- */
 const SETTINGS_KEY = 'emsSim.settings.v1';
-const settings = Object.assign({ voice: true, rate: 1.0, auto: 60, trainer: false, sysVoice: '', pVoice: '', names: { cmd: '', crew: '', drv: '' } }, load(SETTINGS_KEY));
+const settings = Object.assign({ voice: true, rate: 1.0, auto: 60, trainer: false, audioOnly: false, captions: false, sysVoice: '', pVoice: '', names: { cmd: '', crew: '', drv: '' } }, load(SETTINGS_KEY));
 function load(k) { try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) { return {}; } }
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* 保存不可でも動作 */ } }
 
 /* ---------------- 音声 ---------------- */
-let speakingN = 0, listening = false, autoListen = false, rec = null;
-const TTS_REPLACE = [[/SpO₂|SpO2/g, 'エスピーオーツー'], [/ECG/g, 'イーシージー'], [/JCS/g, 'ジェイシーエス'], [/AED/g, 'エーイーディー'],
+let speakingN = 0, listening = false, autoListen = false, rec = null, micOK = false;
+const TTS_REPLACE = [[/[(（]\+[)）]/g, 'あり'], [/SpO₂|SpO2/g, 'エスピーオーツー'], [/ECG/g, 'イーシージー'], [/JCS/g, 'ジェイシーエス'], [/AED/g, 'エーイーディー'],
   [/BVM/g, 'ビーブイエム'], [/CPR/g, 'シーピーアール'], [/VF/g, 'ブイエフ'], [/ROSC/g, 'ロスク'], [/mg\/dL/g, 'ミリグラム パー デシリットル'],
   [/mmHg/g, 'ミリメートル エイチジー'], [/℃/g, '度'], [/%/g, 'パーセント'], [/\//g, 'の']];
 let voices = [];
@@ -47,7 +47,8 @@ const VOICE_STYLE = { // kind: [pitch, rateMul, usePatientVoice]
   dispatch: [0.9, 1.0, false], scene: [1.0, 1.0, false], monitor: [1.0, 1.05, false], fb: [0.8, 0.95, false], hospital: [0.85, 1.0, false], mc: [0.85, 1.0, false],
   patient: [1.15, 0.85, true], family: [1.25, 1.1, true],
 };
-function speak(text, kind = 'scene') {
+function speak(text, kind = 'scene', opts = {}) {
+  if (SIM && !opts.noRec && text) SIM.batch.push({ text, kind });
   if (!settings.voice || !('speechSynthesis' in window) || !text) return;
   let t = text; TTS_REPLACE.forEach(([re, to]) => { t = t.replace(re, to); });
   t = t.replace(/\/--/g, '、拡張期不明').replace(/[()（）]/g, '、');
@@ -57,11 +58,11 @@ function speak(text, kind = 'scene') {
   const want = pv ? settings.pVoice : settings.sysVoice;
   const v = voices.find(x => x.voiceURI === want) || (pv && voices.length > 1 ? voices[voices.length - 1] : voices[0]);
   if (v) u.voice = v;
-  speakingN++; if (listening) abortListen();   // 読み上げ中はマイクを止める(自分の声を拾わない)
-  u.onend = u.onerror = () => { speakingN = Math.max(0, speakingN - 1); if (speakingN === 0 && autoListen) setTimeout(startListen, 600); };
+  speakingN++; if (listening) abortListen(); updateOrb();   // 読み上げ中はマイクを止める(自分の声を拾わない)
+  u.onend = u.onerror = () => { speakingN = Math.max(0, speakingN - 1); updateOrb(); if (speakingN === 0 && autoListen) setTimeout(startListen, 600); };
   speechSynthesis.speak(u);
 }
-function stopSpeech() { speakingN = 0; if ('speechSynthesis' in window) speechSynthesis.cancel(); }
+function stopSpeech() { speakingN = 0; if ('speechSynthesis' in window) speechSynthesis.cancel(); updateOrb(); }
 
 /* ---------------- 状態 ---------------- */
 let screen = 'home';
@@ -72,7 +73,7 @@ const fmtT = s => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s %
 
 function newSim(sc) {
   return { sc, phase: 'dispatch', stage: 'initial', elapsed: 0, done: {}, log: [], monitor: {}, fired: new Set(), ng: [], caution: [],
-    sceneTime: null, role: 'cmd', ended: false, trainerOpen: false, firstAt: {}, announced: false };
+    sceneTime: null, batch: [], role: 'cmd', ended: false, trainerOpen: false, firstAt: {}, announced: false };
 }
 function vital(k, stage) { const sc = SIM.sc; return Object.assign({}, sc.vitals.initial, sc.vitals[stage || SIM.stage] || {})[k]; }
 function pick(v) { if (v == null) return null; if (typeof v === 'string') return v; return v[SIM.stage] || v.initial || null; }
@@ -95,13 +96,14 @@ function homeHTML() {
   const list = SCENARIOS.filter(s => homeFilter === '全て' || s.cat === homeFilter);
   return `
   <header class="top"><div class="brand">🚑 救急隊 想定訓練シミュレータ</div>
-    <button class="btn ghost" data-act="settings">⚙️ 設定</button></header>
+    <span class="hbtns"><button class="btn ghost" data-act="diag">🔧 音声診断</button><button class="btn ghost" data-act="settings">⚙️ 設定</button></span></header>
   <main class="wrap">
     <section class="hero">
       <h1>想定を選んで訓練開始</h1>
       <p>指令・現場状況・傷病者の声・バイタルを音声で提示します。隊長・隊員・機関員の役割ごとに行動を選び、<b>各行動の結果がその場で返り、不適切な対応はその場で指摘</b>されます。訓練後は役割別の振り返りが出ます。</p>
       <div class="row">
         <button class="btn primary big" data-act="random">🎲 ランダム出題${homeFilter !== '全て' ? '(' + esc(homeFilter) + ')' : ''}</button>
+        <label class="chk"><input type="checkbox" id="chkAudio" ${settings.audioOnly ? 'checked' : ''}> 🎧 音声のみモード(画面を見ずに耳だけで訓練)</label>
         <label class="chk"><input type="checkbox" id="chkTrainer" ${settings.trainer ? 'checked' : ''}> 指導者モード(想定名・正解を表示)</label>
       </div>
     </section>
@@ -144,24 +146,28 @@ function simHTML() {
     <div class="phases" id="phases"></div>
     <div class="timer" id="timer">00:00</div>
     <div class="hbtns">
+      <button class="btn ghost" data-act="audioToggle" id="btnAudio"></button>
+      <button class="btn ghost" data-act="capsToggle" id="btnCaps"></button>
       <button class="btn ghost" data-act="mute" id="btnMute"></button>
       <button class="btn ghost" data-act="trainer">👨‍🏫 指導者</button>
       <button class="btn danger" data-act="abort">終了</button>
     </div>
   </header>
-  <div class="simgrid">
+  <div class="simgrid ${settings.audioOnly ? 'audio' : ''} ${settings.captions ? 'caps' : ''}">
     <section class="col left">
       <div class="panel"><h3>📟 モニタ・測定結果</h3><div class="vitals" id="vitals"></div></div>
       <div class="panel" id="stagebox"></div>
     </section>
     <section class="col mid">
-      <div class="panel logpanel"><h3>📋 現場の状況</h3><div id="log" class="log"></div>
+      <div class="panel logpanel"><h3>📋 現場の状況</h3>
+        <div id="orb" class="orb" role="button"><div class="orbicon">🎧</div><div id="orbText" class="orbtext"></div><div class="orbsub">耳だけで状況を把握して、口頭で指示を出します</div></div>
+        <div id="log" class="log"></div>
         <div id="phaseBtn" class="phasebtn"></div>
         <div class="voicebar">
           <div class="vrow"><button class="btn primary mic" id="micBtn">🎤 話す</button>
             <label class="chk"><input type="checkbox" id="autoChk"> 常時聴取</label><span id="micState" class="muted"></span></div>
           <div id="transcript" class="transcript">例：「隊員、バイタル測定」「血圧は?」「酸素10リットル」「機関員、ストレッチャー準備」「ご家族に話を聞く」「病院に連絡」</div>
-          <div class="vrow"><input class="inp" id="cmdInput" placeholder="キーボードで指示を入力(例：隊員、血圧測定)"><button class="btn" id="cmdSend">送信</button></div>
+          <div class="vrow"><input class="inp" id="cmdInput" placeholder="キーボードで指示を入力(例：隊員、血圧測定)" enterkeyhint="send" autocomplete="off" lang="ja"><button class="btn" id="cmdSend">送信</button><button class="btn ghost" data-act="diag">🔧 診断</button></div>
         </div></div>
     </section>
     <section class="col right">
@@ -178,7 +184,7 @@ function renderSim() {
   $('#btnMute').textContent = settings.voice ? '🔊 音声ON' : '🔇 音声OFF';
   renderPhases(); renderVitals(); renderLog(); renderActions(); renderPhaseBtn(); renderStage(); renderTrainer();
   $('#timer').textContent = fmtT(s.elapsed);
-  initVoiceBar();
+  initVoiceBar(); applyMode();
 }
 function renderPhases() {
   const P = [['dispatch', '指令'], ['scene', '現場活動'], ['transport', '搬送'], ['ended', '引継ぎ']];
@@ -248,15 +254,16 @@ function startSim(sc) {
 }
 function doDispatch() {
   if (SIM.announced) return;
-  SIM.announced = true;
+  SIM.announced = true; SIM.batch = [];
   addLog('dispatch', SIM.sc.dispatch, { who: '指令' });
   speak(SIM.sc.dispatch, 'dispatch');
   renderPhaseBtn();
 }
 function arrive() {
-  SIM.phase = 'scene'; SIM.elapsed = 0; $('#timer').textContent = '00:00';
+  SIM.batch = []; SIM.phase = 'scene'; SIM.elapsed = 0; $('#timer').textContent = '00:00';
   addLog('scene', SIM.sc.scene, { who: '現着' });
   speak(SIM.sc.scene, 'scene');
+  if (settings.audioOnly) speak('指示は、画面の丸いボタンをタップして話してください。わからないときは、ヘルプ、と言ってください。', 'fb', { noRec: true });
   renderPhases(); renderPhaseBtn(); renderActions();
 }
 function tick() {
@@ -481,6 +488,29 @@ function openSettings() {
 
 /* ---------------- 音声操作(口頭指示・口頭報告) ---------------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const ERR_HELP = {
+  'not-allowed': 'マイクの使用が許可されていません。Safariのアドレスバー左の「ぁあ」→「Webサイトの設定」でマイクを許可してください。',
+  'service-not-allowed': '音声入力がOFFです。設定→Siriと検索(またはキーボード→音声入力)をONにしてください。',
+  'no-speech': '声が聞き取れませんでした。',
+  'audio-capture': 'マイクが見つかりません。',
+  'network': 'ネットワークに接続できません(音声認識はネット接続が必要です)。',
+  'language-not-supported': '日本語の音声認識が使えません。',
+};
+function updateOrb() {
+  const o = $('#orb'), t = $('#orbText'); if (!o) return;
+  const st = speakingN > 0 ? 'speaking' : listening ? 'listening' : 'idle';
+  o.classList.toggle('speaking', st === 'speaking'); o.classList.toggle('listening', st === 'listening');
+  t.textContent = st === 'speaking' ? '🔊 聞いてください…' : st === 'listening' ? '🎤 どうぞ話してください' : 'タップして指示を出す';
+}
+function applyMode() {
+  const g = $('.simgrid'); if (!g) return;
+  g.classList.toggle('audio', !!settings.audioOnly); g.classList.toggle('caps', !!settings.captions);
+  const a = $('#btnAudio'), c = $('#btnCaps');
+  if (a) a.textContent = '🎧 音声のみ:' + (settings.audioOnly ? 'ON' : 'OFF');
+  if (c) { c.textContent = '字幕:' + (settings.captions ? 'ON' : 'OFF'); c.style.display = settings.audioOnly ? '' : 'none'; }
+  updateOrb();
+}
+const HELP_TEXT = '指示の例です。隊員、バイタル測定。血圧は。酸素を投与して。半坐位にして。機関員、ストレッチャー準備。ご家族に話を聞いて。どうしましたか。病院に連絡して。搬送決定。出発して。患者の様子は。バイタルをまとめて。もう一度、と言うと直前の報告を繰り返します。';
 const O2LOW = /カニュラ|鼻|低流量|(^|[^0-9])[123](リットル|l)/;
 // [行動ID(配列) または 関数, 正規表現] 具体的なものを先に。一致部分は消費して重複判定を防ぐ
 const VR = [
@@ -534,6 +564,7 @@ const VR = [
   [['d_info'], /お薬手帳|薬手帳|保険証/],
   [['d_record'], /記録|時刻を|メモ/],
   [['d_route'], /経路|所要時間|渋滞|ルート確認/],
+  [['c_contact', 'o_skin'], /様子|状態は|見た目|どんな感じ/],
   [['c_safe'], /安全確認|ビーエスアイ|bsi|感染防御|手袋|現場の安全/],
   [['c_contact'], /接触|第一印象|話しかけ|声をかけ|聞こえますか|お名前|わかりますか|分かりますか|大丈夫ですか/],
   [['c_family'], /家族|奥さん|妻|旦那|ご主人|同僚|関係者|目撃|駅員|友人|母親|お母さん/],
@@ -594,7 +625,14 @@ function handleVoice(raw) {
     else speak('指令を聞いてから、現着を宣言してください。', 'fb');
     return;
   }
-  if (/リピート|もう一度言|もういちど|繰り返し/.test(t)) { act('repeat'); return; }
+  if (/リピート|もう一度言|もういちど|繰り返し|聞こえなかった|聞き取れなかった/.test(t)) { act('repeat'); return; }
+  if (/ヘルプ|何ができ|使い方|どう言え|コマンド/.test(t)) { speak(HELP_TEXT, 'fb', { noRec: true }); return; }
+  if (/何分|経過時間|時間は|今何時/.test(t)) { speak('現着から、' + Math.floor(SIM.elapsed / 60) + '分' + (SIM.elapsed % 60) + '秒です。', 'monitor', { noRec: true }); return; }
+  if (/まとめ|整理|サマリ/.test(t)) {
+    const ks = VITAL_KEYS.filter(d => SIM.monitor[d.k]);
+    speak(ks.length ? '現在わかっている情報です。' + ks.map(d => vitalSpeech(d.k, SIM.monitor[d.k].val)).join('、') : 'まだ測定したバイタルはありません。', 'monitor', { noRec: true }); return;
+  }
+  SIM.batch = [];
   const { hits, rest } = parseCommands(t);
   const men = roleMentions(t);
   let ids = [];
@@ -622,7 +660,7 @@ function handleVoice(raw) {
 function setMicUI() {
   const b = $('#micBtn'), st = $('#micState'); if (!b) return;
   b.textContent = listening ? '⏹ 聞き取り中…(タップで中止)' : '🎤 話す';
-  b.classList.toggle('on', listening);
+  b.classList.toggle('on', listening); updateOrb();
   st.textContent = !SR ? '音声認識に未対応のブラウザです(Safari/Chromeを使用)' : listening ? '話してください' : '';
 }
 function startListen() {
@@ -636,25 +674,61 @@ function startListen() {
       if (fin) handleVoice(fin);
     };
     rec.onend = () => { listening = false; setMicUI(); if (autoListen && speakingN === 0) setTimeout(startListen, 300); };
+    rec.onaudiostart = () => { micOK = true; };
     rec.onerror = e => {
+      if (e.error === 'aborted') return;
+      const tr = $('#transcript'); let msg;
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         autoListen = false; const c = $('#autoChk'); if (c) c.checked = false;
-        const tr = $('#transcript'); if (tr) tr.textContent = '⚠ マイクの使用が許可されていません。ブラウザ/システムの設定でマイクと音声入力(Siri/音声入力)を許可してください。';
-      }
+        msg = micOK ? '自動での聞き取り再開が制限されました。丸い🎤ボタンをタップして話してください。' : '⚠ ' + ERR_HELP[e.error] + '(「🔧 診断」で確認できます)';
+      } else msg = e.error === 'no-speech' ? '声が聞き取れませんでした。もう一度どうぞ。' : '⚠ ' + (ERR_HELP[e.error] || e.error);
+      if (tr) tr.textContent = msg;
     };
     rec.start(); listening = true;
   } catch (e) { listening = false; }
   setMicUI();
 }
 function abortListen() { try { if (rec) rec.abort(); } catch (e) { /* ignore */ } listening = false; setMicUI(); }
+function openDiag() {
+  refreshVoices();
+  const sa = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  const rows = [
+    ['HTTPS(安全な接続)で開いている', window.isSecureContext, 'http:// では音声認識が使えません。https:// のURLで開いてください。'],
+    ['読み上げ機能', 'speechSynthesis' in window, 'このブラウザは読み上げに未対応です。'],
+    ['日本語の声', voices.length > 0, '「設定→アクセシビリティ→読み上げコンテンツ→声」で日本語の声を追加してください。'],
+    ['音声認識機能', !!SR, 'Safari(iPad/Mac)またはChromeで開いてください。'],
+    ['Safariのタブとして開いている', !sa, 'ホーム画面アプリとして起動した状態では音声認識が使えないことがあります。Safariで普通に開いて試してください。'],
+  ];
+  const d = document.createElement('div'); d.className = 'modal';
+  d.innerHTML = `<div class="mbox"><h2>🔧 音声診断</h2>
+    <ul class="chk">${rows.map(([l, ok, h]) => `<li class="${ok ? 'y' : 'n'}">${ok ? '✔' : '✖'} ${l}${ok ? '' : `<div class="why">${h}</div>`}</li>`).join('')}</ul>
+    <div class="row"><button class="btn" id="dSpeak">▶ 読み上げテスト</button><button class="btn" id="dListen">🎤 聞き取りテスト</button></div>
+    <div id="dOut" class="transcript">読み上げが聞こえない場合：マナーモード(消音)を解除し、音量を上げてください。</div>
+    <p class="muted">音声認識が使えない場合の代わり：入力欄のキーボードのマイク🎤で話して、送信で操作できます。</p>
+    <div class="row"><button class="btn primary" id="dClose">閉じる</button></div></div>`;
+  document.body.appendChild(d);
+  $('#dClose', d).onclick = () => d.remove();
+  $('#dSpeak', d).onclick = () => { speak('指令。市内、住宅。68歳男性、呼吸困難。意識あり。', 'dispatch', { noRec: true }); };
+  $('#dListen', d).onclick = () => {
+    const out = $('#dOut', d);
+    if (!SR) { out.textContent = 'この環境は音声認識に未対応です。'; return; }
+    stopSpeech(); abortListen();
+    const r = new SR(); r.lang = 'ja-JP'; r.interimResults = true; let got = false;
+    r.onresult = e => { got = true; out.textContent = '聞き取り結果：' + Array.from(e.results).map(x => x[0].transcript).join(''); };
+    r.onerror = e => { got = true; out.textContent = 'エラー(' + e.error + ')：' + (ERR_HELP[e.error] || ''); };
+    r.onend = () => { if (!got) out.textContent = '声が検出されませんでした。もう一度試してください。'; };
+    out.textContent = '話してください…';
+    try { r.start(); } catch (e) { out.textContent = '開始できません：' + e.message; }
+  };
+}
 function initVoiceBar() {
   const mic = $('#micBtn'); if (!mic) return;
   const ac = $('#autoChk'); ac.checked = autoListen;
-  mic.onclick = () => { if (listening) { autoListen = false; ac.checked = false; abortListen(); } else { stopSpeech(); startListen(); } };
+  mic.onclick = () => { if (!SR) { const tr = $('#transcript'); if (tr) tr.textContent = 'このブラウザは音声認識に未対応です。入力欄のキーボードのマイク🎤で話して、送信でも操作できます。'; $('#cmdInput').focus(); return; } if (listening) { autoListen = false; ac.checked = false; abortListen(); } else { stopSpeech(); startListen(); } };
   ac.onchange = () => { autoListen = ac.checked; if (autoListen) { stopSpeech(); startListen(); } else abortListen(); };
   const send = () => { const i = $('#cmdInput'); const v = i.value.trim(); if (v) { i.value = ''; handleVoice(v); } };
   $('#cmdSend').onclick = send; $('#cmdInput').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) send(); };
-  if (!SR) mic.disabled = true;
+  const orb = $('#orb'); if (orb) orb.onclick = () => mic.onclick();
   setMicUI();
 }
 
@@ -674,12 +748,16 @@ function bindIn(root) {
   root.querySelectorAll('[data-name]').forEach(i => { i.oninput = () => { settings.names[i.dataset.name] = i.value; saveSettings(); }; });
   root.querySelectorAll('[data-stage]').forEach(b => { b.onclick = () => { if (SIM.stage !== b.dataset.stage) setStage(b.dataset.stage, '(指導者操作)患者の状態が' + stageName(b.dataset.stage) + 'に変化しました。'); }; });
   root.querySelectorAll('[data-say]').forEach(b => { b.onclick = () => { const t = $('#freeText').value.trim(); if (t) { addLog(b.dataset.say, t, { who: b.dataset.say === 'patient' ? '傷病者' : '関係者' }); speak(t, b.dataset.say); $('#freeText').value = ''; } }; });
+  const ca = root.querySelector('#chkAudio'); if (ca) ca.onchange = () => { settings.audioOnly = ca.checked; saveSettings(); };
   const ct = root.querySelector('#chkTrainer'); if (ct) ct.onchange = () => { settings.trainer = ct.checked; saveSettings(); render(); };
 }
 function act(a) {
   switch (a) {
     case 'home': stopSpeech(); clearInterval(timer); go('home'); break;
     case 'settings': openSettings(); break;
+    case 'diag': openDiag(); break;
+    case 'audioToggle': settings.audioOnly = !settings.audioOnly; saveSettings(); applyMode(); break;
+    case 'capsToggle': settings.captions = !settings.captions; saveSettings(); applyMode(); break;
     case 'random': prepare(pickRandom()); break;
     case 'start': startSim(SIM.sc); break;
     case 'dispatch': doDispatch(); break;
@@ -688,7 +766,7 @@ function act(a) {
     case 'mute': settings.voice = !settings.voice; saveSettings(); if (!settings.voice) stopSpeech(); $('#btnMute').textContent = settings.voice ? '🔊 音声ON' : '🔇 音声OFF'; break;
     case 'mute2': settings.voice = !settings.voice; saveSettings(); if (!settings.voice) stopSpeech(); renderSim(); break;
     case 'trainer': SIM.trainerOpen = !SIM.trainerOpen; renderTrainer(); break;
-    case 'repeat': { const l = [...SIM.log].reverse().find(e => ['scene', 'patient', 'family', 'dispatch', 'monitor'].includes(e.kind)); if (l) speak(l.text, l.kind); break; }
+    case 'repeat': { const b = [...SIM.batch]; if (!b.length) { speak('繰り返す内容がありません。', 'fb', { noRec: true }); break; } stopSpeech(); b.forEach(x => speak(x.text, x.kind, { noRec: true })); break; }
     case 'abort': if (confirm('訓練を終了して振り返りに進みますか?')) { SIM.ended = true; clearInterval(timer); stopSpeech(); go('debrief'); } break;
     case 'copylog': { const t = logText(); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => alert('コピーしました'), () => prompt('コピーしてください', t)); break; }
   }
