@@ -63,7 +63,7 @@ const ACTIONS = [
   { id:'d_prep',   role:'drv', grp:'準備・情報', label:'資器材準備(酸素・吸引・AED・モニタ)' },
   { id:'d_info',   role:'drv', grp:'準備・情報', label:'お薬手帳・保険証・既往歴の確認' },
   { id:'d_record', role:'drv', grp:'準備・情報', label:'時系列記録(活動記録)' },
-  { id:'d_stretch',role:'drv', grp:'搬送', label:'ストレッチャー搬入・収容補助' },
+  { id:'d_stretch',role:'drv', grp:'搬送', label:'ストレッチャー準備・搬入' },
   { id:'d_route',  role:'drv', grp:'搬送', label:'搬送経路・所要時間の確認' },
   { id:'d_drive',  role:'drv', grp:'搬送', label:'現場出発・安全運転で搬送開始' },
 ];
@@ -97,7 +97,7 @@ const DEFAULT_RESULT = {
   t_splint:'固定を実施。',
   t_warm:'毛布で保温しました。',
   t_cool:'冷却を実施しました。',
-  t_pos_semi:'半坐位(起坐位)にしました。',
+  t_pos_semi:'半坐位にしました。',
   t_pos_supine:'仰臥位にしました。',
   t_pos_shock:'仰臥位にして下肢を挙上しました。',
   t_pos_lat:'側臥位(回復体位)にしました。',
@@ -112,7 +112,7 @@ const DEFAULT_RESULT = {
   d_prep:'資器材を準備。酸素・吸引・AED・モニタ・ストレッチャーを傷病者の近くに展開しました。',
   d_info:'お薬手帳・保険証を確認しましたが、特記事項はありません。',
   d_record:'時刻と実施内容を記録しました。',
-  d_stretch:'ストレッチャーで傷病者を救急車内に収容しました。',
+  d_stretch:'ストレッチャーを傷病者のそばに搬入し、車内への収容の準備ができました。',
   d_route:'搬送経路を確認。渋滞なし、所要約15分。',
   d_drive:'現場を出発。安全運転で搬送を開始します。',
 };
