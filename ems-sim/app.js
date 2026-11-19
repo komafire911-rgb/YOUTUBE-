@@ -187,7 +187,7 @@ function renderPhases() {
 }
 function fmtVital(k, v) {
   const def = VITAL_KEYS.find(x => x.k === k);
-  const m = /^(\d+(?:\.\d+)?|\d+\/\d+|\d+\/--)(.*)$/.exec(v);
+  const m = /^(\d+\/(?:\d+|--)|\d+(?:\.\d+)?)(.*)$/.exec(v);
   if (m && def.unit) return `<span class="num">${esc(m[1])}</span><span class="unit">${def.unit}</span>${m[2] ? `<span class="rest">${esc(m[2])}</span>` : ''}`;
   return `<span class="txt">${esc(v)}</span>`;
 }
