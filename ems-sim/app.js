@@ -31,12 +31,12 @@ const ACTION_VITALS = {
 
 /* ---------------- 設定 ---------------- */
 const SETTINGS_KEY = 'emsSim.settings.v1';
-const settings = Object.assign({ voice: true, rate: 1.0, auto: 60, trainer: false, audioOnly: false, captions: false, sysVoice: '', pVoice: '', names: { cmd: '', crew: '', drv: '' } }, load(SETTINGS_KEY));
+const settings = Object.assign({ voice: true, rate: 1.0, auto: 60, trainer: false, audioOnly: false, captions: false, aiMode: false, apiKey: '', model: 'claude-haiku-5-5', sysVoice: '', pVoice: '', names: { cmd: '', crew: '', drv: '' } }, load(SETTINGS_KEY));
 function load(k) { try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) { return {}; } }
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* 保存不可でも動作 */ } }
 
 /* ---------------- 音声 ---------------- */
-let speakingN = 0, listening = false, autoListen = false, rec = null, micOK = false;
+let speakingN = 0, listening = false, autoListen = false, rec = null, micOK = false, aiBusy = false;
 const TTS_REPLACE = [[/[(（]\+[)）]/g, 'あり'], [/SpO₂|SpO2/g, 'エスピーオーツー'], [/ECG/g, 'イーシージー'], [/JCS/g, 'ジェイシーエス'], [/AED/g, 'エーイーディー'],
   [/BVM/g, 'ビーブイエム'], [/CPR/g, 'シーピーアール'], [/VF/g, 'ブイエフ'], [/ROSC/g, 'ロスク'], [/mg\/dL/g, 'ミリグラム パー デシリットル'],
   [/mmHg/g, 'ミリメートル エイチジー'], [/℃/g, '度'], [/%/g, 'パーセント'], [/\//g, 'の']];
@@ -73,7 +73,7 @@ const fmtT = s => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s %
 
 function newSim(sc) {
   return { sc, phase: 'dispatch', stage: 'initial', elapsed: 0, done: {}, log: [], monitor: {}, fired: new Set(), ng: [], caution: [],
-    sceneTime: null, batch: [], role: 'cmd', ended: false, trainerOpen: false, firstAt: {}, announced: false };
+    sceneTime: null, batch: [], convo: [], role: 'cmd', ended: false, trainerOpen: false, firstAt: {}, announced: false };
 }
 function vital(k, stage) { const sc = SIM.sc; return Object.assign({}, sc.vitals.initial, sc.vitals[stage || SIM.stage] || {})[k]; }
 function pick(v) { if (v == null) return null; if (typeof v === 'string') return v; return v[SIM.stage] || v.initial || null; }
@@ -104,6 +104,7 @@ function homeHTML() {
       <div class="row">
         <button class="btn primary big" data-act="random">🎲 ランダム出題${homeFilter !== '全て' ? '(' + esc(homeFilter) + ')' : ''}</button>
         <label class="chk"><input type="checkbox" id="chkAudio" ${settings.audioOnly ? 'checked' : ''}> 🎧 音声のみモード(画面を見ずに耳だけで訓練)</label>
+        <label class="chk"><input type="checkbox" id="chkAI" ${settings.aiMode && settings.apiKey ? 'checked' : ''}> 💬 会話モード(AIと自由に会話・APIキーが必要)</label>
         <label class="chk"><input type="checkbox" id="chkTrainer" ${settings.trainer ? 'checked' : ''}> 指導者モード(想定名・正解を表示)</label>
       </div>
     </section>
@@ -475,13 +476,25 @@ function openSettings() {
       <label>指令・モニタ・指導の声<select id="sSys">${opts(settings.sysVoice)}</select></label>
       <label>傷病者・家族の声<select id="sP">${opts(settings.pVoice)}</select></label>
       <label>モニタの自動読み上げ間隔<select id="sAuto">${[[0, '行わない'], [30, '30秒ごと'], [60, '60秒ごと'], [120, '120秒ごと']].map(([v, l]) => `<option value="${v}" ${settings.auto === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <hr style="border-color:var(--line);width:100%">
+      <label class="chk"><input type="checkbox" id="sAI" ${settings.aiMode ? 'checked' : ''}> 💬 会話モード(AI)を使う</label>
+      <label>Anthropic APIキー(この端末にだけ保存)<input class="inp" id="sKey" type="password" placeholder="sk-ant-..." value="${esc(settings.apiKey)}" autocomplete="off"></label>
+      <label>モデル<input class="inp" id="sModel" value="${esc(settings.model)}"></label>
+      <div class="row"><button class="btn" id="sAITest">接続テスト</button><span id="sAIOut" class="muted"></span></div>
+      <p class="muted">※ APIキーはこの端末のブラウザ内にだけ保存され、AIの利用料はキーの持ち主に課金されます。月の上限額を設定した専用キーを使い、共有の端末では使わないでください。AIには想定の内容と会話だけが送られます。</p>
       <p class="muted">※ iPad では音声はボタン操作の後に再生されます。マナーモードを解除し、音量を上げてください。日本語の声が出ない場合は「設定→アクセシビリティ→読み上げコンテンツ→声」で日本語の声をダウンロードしてください。</p>
       <div class="row"><button class="btn" id="sTest">▶ 試し聞き</button><button class="btn primary" id="sClose">閉じる</button></div>
     </div>`;
   document.body.appendChild(d);
   $('#sRate', d).oninput = e => { $('#rateV', d).textContent = (+e.target.value).toFixed(1); };
   $('#sTest', d).onclick = () => { apply(); stopSpeech(); speak('指令。市内、住宅。68歳男性、呼吸困難。意識あり。', 'dispatch'); speak('はぁ…はぁ…苦しい…', 'patient'); };
-  const apply = () => { settings.voice = $('#sVoice', d).checked; settings.rate = +$('#sRate', d).value; settings.sysVoice = $('#sSys', d).value; settings.pVoice = $('#sP', d).value; settings.auto = +$('#sAuto', d).value; saveSettings(); };
+  const apply = () => { settings.voice = $('#sVoice', d).checked; settings.rate = +$('#sRate', d).value; settings.sysVoice = $('#sSys', d).value; settings.pVoice = $('#sP', d).value; settings.auto = +$('#sAuto', d).value;
+    settings.aiMode = $('#sAI', d).checked; settings.apiKey = $('#sKey', d).value.trim(); settings.model = $('#sModel', d).value.trim() || 'claude-haiku-5-5'; saveSettings(); };
+  $('#sAITest', d).onclick = async () => {
+    apply(); const o = $('#sAIOut', d); o.textContent = '接続中…';
+    try { const r = await aiFetch({ max_tokens: 20, messages: [{ role: 'user', content: '「OK」とだけ答えてください。' }] }); o.textContent = '✔ 接続できました：' + r.slice(0, 20); }
+    catch (e) { o.textContent = '✖ ' + (e.message || e); }
+  };
   $('#sClose', d).onclick = () => { apply(); d.remove(); if (SIM && screen === 'sim') renderSim(); };
 }
 
@@ -498,9 +511,9 @@ const ERR_HELP = {
 };
 function updateOrb() {
   const o = $('#orb'), t = $('#orbText'); if (!o) return;
-  const st = speakingN > 0 ? 'speaking' : listening ? 'listening' : 'idle';
+  const st = aiBusy ? 'thinking' : speakingN > 0 ? 'speaking' : listening ? 'listening' : 'idle';
   o.classList.toggle('speaking', st === 'speaking'); o.classList.toggle('listening', st === 'listening');
-  t.textContent = st === 'speaking' ? '🔊 聞いてください…' : st === 'listening' ? '🎤 どうぞ話してください' : 'タップして指示を出す';
+  t.textContent = st === 'thinking' ? '🤔 考えています…' : st === 'speaking' ? '🔊 聞いてください…' : st === 'listening' ? '🎤 どうぞ話してください' : 'タップして指示を出す';
 }
 function applyMode() {
   const g = $('.simgrid'); if (!g) return;
@@ -633,6 +646,10 @@ function handleVoice(raw) {
     speak(ks.length ? '現在わかっている情報です。' + ks.map(d => vitalSpeech(d.k, SIM.monitor[d.k].val)).join('、') : 'まだ測定したバイタルはありません。', 'monitor', { noRec: true }); return;
   }
   SIM.batch = [];
+  if (settings.aiMode && settings.apiKey) { handleAI(raw, t); return; }
+  handleKeyword(raw, t);
+}
+function handleKeyword(raw, t) {
   const { hits, rest } = parseCommands(t);
   const men = roleMentions(t);
   let ids = [];
@@ -732,6 +749,100 @@ function initVoiceBar() {
   setMicUI();
 }
 
+
+/* ---------------- 会話モード(AI) ----------------
+   隊長の自由な発話をAI(Claude)が解釈し、隊員・機関員・傷病者・家族の返答を生成します。
+   バイタルなどの数値・状態変化は従来どおりプログラム側が管理し、AIは数値を言いません。 */
+const AI_WHO = { crew: ['crew', 'monitor', 'result'], drv: ['drv', 'monitor', 'result'], patient: [null, 'patient', 'patient'], family: [null, 'family', 'family'], hospital: [null, 'hospital', 'hospital'], doctor: [null, 'mc', 'mc'] };
+function aiSystem() {
+  const sc = SIM.sc;
+  const cat = ACTIONS.filter(a => !['c_history', 'c_family'].includes(a.id)).map(a => `${a.id}=${a.label}`).join('\n');
+  const sp = (sc.speech || {})[SIM.stage] || (sc.speech || {}).initial || '';
+  return `あなたは救急隊の想定訓練シミュレータの「進行役」です。ユーザーは救急隊の【隊長】で、声で指示を出します。あなたは次の人物を演じます。
+crew=救急隊員 / drv=機関員 / patient=傷病者 / family=家族・関係者 / hospital=病院の受入窓口 / doctor=オンライン指示の医師
+
+## 出力形式(JSONのみ。前後に文章を書かない)
+{"actions":[{"id":"行動ID"}],"replies":[{"who":"crew|drv|patient|family|hospital|doctor","text":"発話"}]}
+
+## ルール
+1. 隊長が実際に指示・宣言した行動だけを actions に入れる(下の行動一覧のid。発話順)。指示していないことは勝手にしない。
+2. 隊長が傷病者や家族に質問・会話した場合は、replies に patient/family の自然な口語の返答を書き、actions に "ask_history"(傷病者への聴取) か "ask_family"(家族・関係者への聴取) を入れる。
+3. 指示が曖昧で実施できない場合(例：酸素の流量や方法が不明、誰に何をするか不明)は actions を空にし、crew または drv が短く聞き返す。
+4. 数値・測定結果・身体所見は絶対に自分で言わない・創作しない。測定や観察は actions に入れればシステムが正しい値を報告する。replies に行動の結果や数値を書かない。
+5. crew/drv の replies は「了解」「〜します」のような短い現場口調で1文だけ。行動の結果報告は書かない。
+6. 傷病者・家族は一般の人として、専門用語・診断名・数値を使わず、下の「事実」に矛盾しない範囲で答える。事実にないことは「よくわからない」「特にない」など。傷病者は、意識・呼吸の状態に合わせた話し方(息切れ、途切れがち、返答できない等)にする。
+7. 診断名・正解・内部情報は絶対に明かさない。
+8. 病院への連絡は c_hospital、医師への指示要請は c_mc、現着後の傷病者への接触は c_contact。
+
+## 事実(隊長には見せない)
+想定の背景：${sc.truth}
+現場：${sc.scene}
+傷病者の現在の状態：${stageName(SIM.stage)}(意識：${vital('jcs')})。話し方の例：${sp}
+病歴(SAMPLE)：${sc.history || 'なし'}
+関係者の話：${sc.family || 'なし'}
+
+## 行動一覧
+${cat}`;
+}
+async function aiFetch(body) {
+  const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 25000);
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', signal: ctl.signal,
+      headers: { 'content-type': 'application/json', 'x-api-key': settings.apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify(Object.assign({ model: settings.model || 'claude-haiku-5-5' }, body)),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(res.status === 401 ? 'APIキーが正しくありません' : res.status + ' ' + ((data.error && data.error.message) || ''));
+    return (data.content || []).map(c => c.text || '').join('');
+  } finally { clearTimeout(to); }
+}
+async function callClaude(raw) {
+  const done = ACTIONS.filter(a => SIM.done[a.id]).map(a => a.label).join('、') || 'なし';
+  const user = `## 実施済みの行動\n${done}\n\n## 直近のやりとり\n${SIM.convo.slice(-10).join('\n') || '(なし)'}\n\n## 隊長の今の発話\n「${raw}」`;
+  const txt = await aiFetch({ max_tokens: 700, system: aiSystem(), messages: [{ role: 'user', content: user }] });
+  const i = txt.indexOf('{'), j = txt.lastIndexOf('}');
+  if (i < 0 || j < i) throw new Error('応答を解釈できませんでした');
+  return JSON.parse(txt.slice(i, j + 1));
+}
+function aiSay(r) {
+  const m = AI_WHO[r.who]; if (!m || !r.text) return;
+  const [role, kind, logKind] = m;
+  const label = role ? ROLES[role].name : ({ patient: '傷病者', family: '関係者', hospital: '病院', doctor: '医師' })[r.who];
+  addLog(logKind, r.text, { who: label });
+  speak((role ? ROLES[role].name + '、' : '') + r.text, kind);
+  SIM.convo.push(label + '：' + r.text);
+}
+async function handleAI(raw, t) {
+  if (aiBusy) { speak('少々お待ちください。', 'monitor', { noRec: true }); return; }
+  aiBusy = true; updateOrb();
+  try {
+    const out = await callClaude(raw);
+    if (SIM.ended) return;
+    SIM.convo.push('隊長：' + raw);
+    const rs = Array.isArray(out.replies) ? out.replies : [];
+    rs.filter(r => ['crew', 'drv', 'hospital', 'doctor'].includes(r.who)).forEach(aiSay);
+    let last = null;
+    (Array.isArray(out.actions) ? out.actions : []).forEach(a => {
+      if (!a || SIM.ended) return;
+      if (a.id === 'ask_history' || a.id === 'ask_family') {
+        const key = a.id === 'ask_history' ? 'c_history' : 'c_family';
+        if (!SIM.done[key]) SIM.firstAt[key] = SIM.elapsed;
+        SIM.done[key] = (SIM.done[key] || 0) + 1;
+        addLog('crew', a.id === 'ask_history' ? '傷病者へ聴取(会話)' : '家族・関係者へ聴取(会話)', { who: roleLabel('cmd') });
+        renderActions(); return;
+      }
+      if (!ACT[a.id]) return;
+      run(a.id, { prefix: ACT[a.id].role !== last }); last = ACT[a.id].role;
+    });
+    rs.filter(r => r.who === 'patient' || r.who === 'family').forEach(aiSay);
+    if (!rs.length && !(out.actions || []).length) { addLog('fb', '聞き取れませんでした：「' + raw + '」', { who: 'システム', lv: 'caution' }); speak('隊員、もう一度お願いします。', 'monitor'); }
+  } catch (e) {
+    addLog('fb', '会話モードで処理できませんでした(' + (e.message || e) + ')。キーワード方式で処理します。', { who: 'システム', lv: 'caution' });
+    handleKeyword(raw, t);
+  } finally { aiBusy = false; updateOrb(); }
+}
+
 /* ---------------- イベント ---------------- */
 function pickRandom() {
   const pool = SCENARIOS.filter(s => homeFilter === '全て' || s.cat === homeFilter);
@@ -748,6 +859,7 @@ function bindIn(root) {
   root.querySelectorAll('[data-name]').forEach(i => { i.oninput = () => { settings.names[i.dataset.name] = i.value; saveSettings(); }; });
   root.querySelectorAll('[data-stage]').forEach(b => { b.onclick = () => { if (SIM.stage !== b.dataset.stage) setStage(b.dataset.stage, '(指導者操作)患者の状態が' + stageName(b.dataset.stage) + 'に変化しました。'); }; });
   root.querySelectorAll('[data-say]').forEach(b => { b.onclick = () => { const t = $('#freeText').value.trim(); if (t) { addLog(b.dataset.say, t, { who: b.dataset.say === 'patient' ? '傷病者' : '関係者' }); speak(t, b.dataset.say); $('#freeText').value = ''; } }; });
+  const ci = root.querySelector('#chkAI'); if (ci) ci.onchange = () => { settings.aiMode = ci.checked; saveSettings(); if (ci.checked && !settings.apiKey) { ci.checked = false; settings.aiMode = false; openSettings(); } };
   const ca = root.querySelector('#chkAudio'); if (ca) ca.onchange = () => { settings.audioOnly = ca.checked; saveSettings(); };
   const ct = root.querySelector('#chkTrainer'); if (ct) ct.onchange = () => { settings.trainer = ct.checked; saveSettings(); render(); };
 }
